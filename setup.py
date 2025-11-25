@@ -2,7 +2,7 @@ import setuptools
 from setuptools import setup
 
 setup(name='steely',
-      version='0.0.0.1',
+      version='0.1.0.5',
       description='A Collection of Utilities. Not even can be described.',
       url='https://github.com/tomneto',
       author='Steely Tools - Tom Neto',

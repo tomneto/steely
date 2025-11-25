@@ -1,16 +1,212 @@
+"""
+Logger Module - Flexible Logging with Color-Coded Output
+=========================================================
+
+This module provides a powerful, thread-safe logging system with support for
+color-coded terminal output, file logging, and automatic function decoration.
+
+Features
+--------
+- Color-coded log levels (INFO, WARNING, ERROR, etc.)
+- Thread-safe asynchronous logging
+- File logging with date-based rotation
+- Screen clearing capability
+- Decorator for automatic function logging
+- Support for both sync and async functions
+
+Classes
+-------
+Logger
+    Main logging class with support for multiple log levels.
+
+Functions
+---------
+log
+    Decorator that automatically logs function execution.
+relative
+    Helper function for constructing relative paths.
+
+Log Levels
+----------
+The following log levels are supported, each with distinct colors:
+
+- **INFO/START** (Cyan): General information and function start
+- **WARNING/ALERT** (Yellow): Warning messages
+- **SUCCESS/OK** (Green): Success messages
+- **ERROR/FAIL/FAULT/CRITICAL/FATAL** (Red): Error messages
+- **TEST/TEST-RESULT** (Blue): Test-related messages
+
+Examples
+--------
+Basic logging:
+
+>>> from steely.logger import Logger
+>>> logger = Logger("MyApp", "main")
+>>> logger.info("Application started")
+>>> logger.warning("Low memory")
+>>> logger.error("Connection failed")
+
+Using the log decorator:
+
+>>> from steely.logger import log
+>>> @log
+... def process_data(data):
+...     return data.upper()
+
+Logging to file:
+
+>>> logger = Logger("MyApp", "main", destination="/var/log/myapp")
+>>> logger.info("This will be saved to file")
+"""
+
+import asyncio
+import inspect
 import multiprocessing
 import os
 import threading
+from functools import wraps
 from time import sleep
 from datetime import datetime
+from typing import Literal, Any
+
 from steely.design import UnicodeColors
 
+__all__ = ["Logger", "log", "relative", "Level"]
 
-def relative(path):
-	return os.path.join(os.path.dirname(__file__), path)
+
+def relative(path: str) -> str:
+    """
+    Construct an absolute path relative to this module's directory.
+
+    This helper function is useful for accessing files that are stored
+    alongside the logger module, such as configuration files or templates.
+
+    Parameters
+    ----------
+    path : str
+        The relative path to append to the module's directory.
+
+    Returns
+    -------
+    str
+        The absolute path constructed by joining the module's directory
+        with the provided relative path.
+
+    Examples
+    --------
+    >>> relative("config.json")
+    '/path/to/steely/logger/config.json'
+    >>> relative("templates/email.html")
+    '/path/to/steely/logger/templates/email.html'
+    """
+    return os.path.join(os.path.dirname(__file__), path)
+
+
+Level = Literal[
+    "INFO",
+    "START",
+    "WARNING",
+    "ALERT",
+    "SUCCESS",
+    "OK",
+    "CRITICAL",
+    "ERROR",
+    "FAULT",
+    "FAIL",
+    "FATAL",
+    "TEST-RESULT",
+    "TEST",
+]
+"""
+Type alias for valid log level strings.
+
+Valid values are: INFO, START, WARNING, ALERT, SUCCESS, OK,
+CRITICAL, ERROR, FAULT, FAIL, FATAL, TEST-RESULT, TEST.
+"""
 
 
 class Logger:
+	"""
+	A flexible, thread-safe logger with color-coded terminal output.
+
+	Logger provides a comprehensive logging solution with support for multiple
+	log levels, file output, screen clearing, and beautiful color-coded
+	terminal output using ANSI escape codes.
+
+	Parameters
+	----------
+	app_name : str
+		The application name displayed in log messages. Will be converted
+		to uppercase. If None, defaults to 'YOUR-APP-NAME-GOES-HERE'.
+	owner : str
+		The owner/component name displayed in log messages (e.g., function
+		name, module name). Will be converted to uppercase.
+	destination : str, optional
+		Directory path for file logging. If provided, logs will be written
+		to date-stamped files (DD-MM-YYYY.log) in this directory.
+		Default is None (no file logging).
+	debug : bool, optional
+		Enable debug mode. When True, sets environment to "debug" and
+		appends "_debug" to the log directory. Default is True.
+	clean : bool, optional
+		Enable persistent screen clearing. When True, clears the screen
+		before each log message. Default is False.
+	**kwargs
+		Additional keyword arguments that will be included as tags in
+		each log message.
+
+	Attributes
+	----------
+	app_name_upper : str
+		The uppercase application name.
+	owner : str
+		The owner/component name.
+	path : str or None
+		The destination path for file logging.
+	debug : bool
+		Whether debug mode is enabled.
+	environment : str or None
+		The current environment ("debug" or None).
+	clean : bool
+		Whether screen clearing is enabled for the next message.
+	master_clean : bool
+		Whether screen clearing is persistent.
+	kwargs : dict
+		Additional tags to include in log messages.
+
+	Examples
+	--------
+	Basic usage:
+
+	>>> logger = Logger("MyApp", "database")
+	>>> logger.info("Connected to database")
+	>>> logger.warning("Connection pool running low")
+	>>> logger.error("Query timeout")
+
+	With file logging:
+
+	>>> logger = Logger("MyApp", "api", destination="/var/log/myapp")
+	>>> logger.info("Request received")  # Also saved to file
+
+	With additional tags:
+
+	>>> logger = Logger("MyApp", "auth", session_id="abc123")
+	>>> logger.info("User logged in")  # Includes [ABC123] tag
+
+	Callable usage:
+
+	>>> logger = Logger("MyApp", "main")
+	>>> logger("INFO", "Direct call works too")
+
+	Notes
+	-----
+	- All logging operations are performed in separate threads for
+	  non-blocking behavior.
+	- Log files are named using the format DD-MM-YYYY.log and are
+	  appended to throughout the day.
+	- Screen clearing works on both Windows (cls) and Unix (clear).
+	"""
+
 	clean = False
 	master_clean = False
 	environment = None
@@ -36,18 +232,44 @@ class Logger:
 			self.environment = "debug"
 
 	@staticmethod
-	def _subprocess_log(logger, level: str, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, self_debug: bool = True, **kwargs):
+	def _subprocess_log(logger, level: Level, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, self_debug: bool = True, **kwargs):
 		"""
+		Internal method that performs the actual logging operation.
 
-		Args:
-			level:
-			message:
-			app_name:
-			clean:
-			supress:
-			**kwargs:
+		This static method is called in a separate thread by the log() method
+		to ensure non-blocking logging. It handles formatting, coloring,
+		file writing, and terminal output.
 
-		Returns:
+		Parameters
+		----------
+		logger : Logger
+			The Logger instance containing configuration.
+		level : Level
+			The log level (INFO, WARNING, ERROR, etc.).
+		message : str
+			The message to log.
+		app_name : str, optional
+			Override the logger's app_name for this message.
+		clean : bool, optional
+			Clear the screen after this message. Default is False.
+		supress : bool, optional
+			Suppress terminal output. Default is False.
+		debug : bool, optional
+			Force output regardless of suppress. Default is True.
+		self_debug : bool, optional
+			The logger instance's debug setting. Default is True.
+		**kwargs
+			Additional tags to include in this message.
+
+		Returns
+		-------
+		str
+			The formatted log message content.
+
+		Notes
+		-----
+		This method should not be called directly. Use the log() method
+		or the level-specific methods (info, warning, error, etc.) instead.
 		"""
 
 		def generate_log_path():
@@ -90,11 +312,11 @@ class Logger:
 			del kwargs["suppress"]
 		except: pass
 
-		message_enclouser = timestamp + f" - [{_current_app}]" + f" [{owner}]" + ' ' + ' '.join(
+		message_enclose = timestamp + f" - [{_current_app}]" + f" [{owner}]" + ' ' + ' '.join(
 			[f'[{str(item).upper()}]' for item in [*logger.kwargs.values()]]) + ' '.join(
 			[f'[{str(item).upper()}]' for item in [*kwargs.values()]]) + f" [{level}]"
 
-		content = f"\n{message_enclouser.replace('  ', ' ')}: {str(message)}"
+		content = f"\n{message_enclose.replace('  ', ' ')}: {str(message)}"
 
 		if logger.path is not None:
 			with open(generate_log_path(), 'a+') as f:
@@ -108,6 +330,8 @@ class Logger:
 			correspondent_clr = UnicodeColors.success
 		elif level in ['CRITICAL', 'ERROR', 'FAULT', 'FAIL', 'FATAL']:
 			correspondent_clr = UnicodeColors.fail
+		elif level == 'TEST-RESULT' or level == 'TEST':
+			correspondent_clr = UnicodeColors.bright_blue
 
 		if not supress or debug or self_debug:
 			print(correspondent_clr, content[1:], UnicodeColors.reset)
@@ -116,27 +340,203 @@ class Logger:
 
 		return content
 
-	def log(self, level: str, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+	def log(self, level: Level, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
 		"""
+		Log a message with the specified level.
 
-		Args:
-			level:
-			message:
-			app_name:
-			clean:
-			supress:
-			**kwargs:
+		This is the main logging method that accepts any valid log level.
+		The actual logging is performed asynchronously in a separate thread.
 
-		Returns:
+		Parameters
+		----------
+		level : Level
+			The log level. Must be one of: INFO, START, WARNING, ALERT,
+			SUCCESS, OK, CRITICAL, ERROR, FAULT, FAIL, FATAL, TEST-RESULT, TEST.
+		message : str
+			The message to log.
+		app_name : str, optional
+			Override the default app name for this message.
+		clean : bool, optional
+			Clear the screen after logging. Default is False.
+		supress : bool, optional
+			Suppress terminal output (still writes to file). Default is False.
+		debug : bool, optional
+			Force output even if suppressed. Default is True.
+		**kwargs
+			Additional tags to include in the log message.
 
+		Returns
+		-------
+		bool
+			Always returns True indicating the log was queued.
+
+		Examples
+		--------
+		>>> logger = Logger("MyApp", "main")
+		>>> logger.log("INFO", "Server started on port 8080")
+		>>> logger.log("ERROR", "Connection failed", retry_count="3")
 		"""
 		thread = threading.Thread(target=self._subprocess_log, kwargs={
 			"logger": self, "level": level, "message": message, "app_name": app_name, "clean": clean, "suppress": supress, "debug": debug, "self_debug": self.debug, **kwargs
 		})
 		thread.start()
 
-		#self._subprocess_log(self, level, message, app_name=app_name, clean=clean, supress=supress, debug=debug, self_debug=self.debug, **kwargs)
 		return True
 
 	def __call__(self, *args, **kwargs):
+		"""Allow the logger instance to be called directly like a function."""
 		self.log(*args, **kwargs)
+
+	def info(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log an informational message (cyan color)."""
+		return self.log("INFO", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def start(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a start/initialization message (cyan color)."""
+		return self.log("START", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def warning(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a warning message (yellow color)."""
+		return self.log("WARNING", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def alert(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log an alert message (yellow color)."""
+		return self.log("ALERT", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def success(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a success message (green color)."""
+		return self.log("SUCCESS", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def ok(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log an OK/confirmation message (green color)."""
+		return self.log("OK", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def critical(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a critical error message (red color)."""
+		return self.log("CRITICAL", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def error(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log an error message (red color)."""
+		return self.log("ERROR", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def fault(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a fault message (red color)."""
+		return self.log("FAULT", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def fail(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a failure message (red color)."""
+		return self.log("FAIL", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def fatal(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a fatal error message (red color)."""
+		return self.log("FATAL", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def test_result(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a test result message (blue color)."""
+		return self.log("TEST-RESULT", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+	def test(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+		"""Log a test message (blue color)."""
+		return self.log("TEST", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+
+def log(func):
+    """
+    Decorator that automatically logs function execution lifecycle.
+
+    This decorator wraps a function to automatically log when it starts,
+    completes successfully, or fails with an exception. It supports both
+    synchronous and asynchronous functions.
+
+    Parameters
+    ----------
+    func : callable
+        The function to decorate. Can be sync or async.
+
+    Returns
+    -------
+    callable
+        The wrapped function with automatic logging.
+
+    Behavior
+    --------
+    - **On call**: Logs "[START]: Function Execution Started..."
+    - **On success**: Logs "[SUCCESS]: Function Finished"
+    - **On exception**: Logs "[ERROR]: Function Failed: <error message>"
+
+    The log messages include:
+    - Timestamp (DD-MM-YYYY HH:MM:SS)
+    - Module name (uppercase)
+    - Function name (uppercase)
+    - Log level
+
+    Examples
+    --------
+    Basic usage with sync function:
+
+    >>> from steely import Dan
+    >>> @Dan.log
+    ... def process_data(data):
+    ...     return data.upper()
+    >>> process_data("hello")
+    # Logs: [START]: Function Execution Started...
+    # Logs: [SUCCESS]: Function Finished
+    'HELLO'
+
+    With async function:
+
+    >>> @Dan.log
+    ... async def fetch_data(url):
+    ...     response = await http_client.get(url)
+    ...     return response
+
+    Error handling:
+
+    >>> @Dan.log
+    ... def risky_operation():
+    ...     raise ValueError("Something went wrong")
+    >>> risky_operation()
+    # Logs: [START]: Function Execution Started...
+    # Logs: [ERROR]: Function Failed: Something went wrong
+
+    Notes
+    -----
+    - The original function signature is preserved for compatibility
+      with frameworks like FastAPI that use introspection.
+    - Exceptions are logged but not re-raised; the function returns None
+      on error.
+    - The module name is extracted using inspect.getmodule().
+    """
+    __log__ = Logger(inspect.getmodule(func).__name__, func.__name__)
+
+    if asyncio.iscoroutinefunction(func):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            __log__.start(f'Function Execution Started...')
+            try:
+                res = await func(*args, **kwargs)
+                __log__.success(f'Function Finished')
+
+                return res
+            except Exception as e:
+                __log__.error(f'Function Failed: {str(e)}')
+
+        # Preserve the original signature for FastAPI
+        async_wrapper.__signature__ = inspect.signature(func)
+        return async_wrapper
+    else:
+
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            __log__.start(f'Function Execution Started...')
+            try:
+                res = func(*args, **kwargs)
+                __log__.success(f'Function Finished')
+
+                return res
+            except Exception as e:
+                __log__.error(f'Function Failed: {str(e)}')
+
+        # Preserve the original signature for FastAPI
+        sync_wrapper.__signature__ = inspect.signature(func)
+        return sync_wrapper
