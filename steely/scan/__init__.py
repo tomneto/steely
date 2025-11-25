@@ -612,11 +612,11 @@ def scan(func):
             ScanPrinter.header(func.__name__, module_name)
             ScanPrinter.signature(sig, args, kwargs, param_names)
 
-            # Set up tracing
-            tracker = VariableTracker(func.__code__)
-            tracker.active = True
-            old_trace = sys.gettrace()
-            sys.settrace(tracker.trace_calls)
+            # Note: sys.settrace doesn't work well with async functions
+            # because it traces the entire event loop. Variable tracking
+            # is disabled for async functions.
+            print(f"{ScanPrinter.C.bright_cyan}{ScanPrinter.S.BOX_V}{ScanPrinter.C.reset} "
+                  f"{ScanPrinter.C.dim}(async function - variable tracking disabled){ScanPrinter.C.reset}")
 
             try:
                 result = await func(*args, **kwargs)
@@ -626,8 +626,6 @@ def scan(func):
                 ScanPrinter.exception(e)
                 raise
             finally:
-                sys.settrace(old_trace)
-                tracker.active = False
                 elapsed = (datetime.now() - start).total_seconds() * 1000
                 ScanPrinter.footer(elapsed)
 

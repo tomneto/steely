@@ -7,4 +7,4 @@ def my_function(x, y):
     b = [1, 2, 3]
     return a * len(b)
 
-my_function(1, 2)
+my_function(1, 52)

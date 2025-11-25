@@ -1,7 +1,7 @@
 [project]
 name = "steely"
-version = "0.1.0.5"
-description = ""
+version = "1.0.0.0"
+description = "While the poor people sleeping, in the shade of the light, all the stars come out at night. :star:\n-Steely Dan, Show Biz Kids."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
