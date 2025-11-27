@@ -211,8 +211,9 @@ class Logger:
 	master_clean = False
 	environment = None
 	log_path = None
+	_global_app_name = None
 
-	def __init__(self, app_name: str, owner: str, destination: str = None, debug: bool = True, clean: bool = False, **kwargs):
+	def __init__(self, owner: str, app_name: str = None, destination: str = None, debug: bool = True, clean: bool = False, **kwargs):
 
 		self.kwargs = kwargs
 
@@ -220,7 +221,7 @@ class Logger:
 			self.master_clean = True
 
 		if app_name is None:
-			self.app_name_upper = 'YOUR-APP-NAME-GOES-HERE'
+			self.app_name_upper = None
 		else:
 			self.app_name_upper = str(app_name).upper()
 
@@ -312,7 +313,9 @@ class Logger:
 			del kwargs["suppress"]
 		except: pass
 
-		message_enclose = timestamp + f" - [{_current_app}]" + f" [{owner}]" + ' ' + ' '.join(
+		# Build message with optional app_name
+		app_name_part = f" - [{_current_app}]" if _current_app is not None else ""
+		message_enclose = timestamp + app_name_part + f" [{owner}]" + ' ' + ' '.join(
 			[f'[{str(item).upper()}]' for item in [*logger.kwargs.values()]]) + ' '.join(
 			[f'[{str(item).upper()}]' for item in [*kwargs.values()]]) + f" [{level}]"
 
@@ -439,6 +442,51 @@ class Logger:
 		"""Log a test message (blue color)."""
 		return self.log("TEST", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
 
+	def set_app_name(self, app_name: str):
+		"""
+		Set the application name for this logger instance.
+
+		Parameters
+		----------
+		app_name : str
+			The new application name. Will be converted to uppercase.
+			If None, app_name will not be printed in log messages.
+
+		Examples
+		--------
+		>>> logger = Logger("main", "OldApp")
+		>>> logger.info("Message with OldApp")
+		>>> logger.set_app_name("NewApp")
+		>>> logger.info("Message with NewApp")
+		>>> logger.set_app_name(None)
+		>>> logger.info("Message without app_name")
+		"""
+		self.app_name_upper = str(app_name).upper() if app_name is not None else None
+
+	@classmethod
+	def set_global_app_name(cls, app_name: str):
+		"""
+		Set a global application name that will be used by the log decorator.
+
+		This class method sets a global app_name that will be used by all
+		functions decorated with @log. If not set, the log decorator uses
+		the module name of the decorated function.
+
+		Parameters
+		----------
+		app_name : str
+			The global application name. Will be converted to uppercase.
+
+		Examples
+		--------
+		>>> Logger.set_global_app_name("MyApp")
+		>>> @log
+		... def my_function():
+		...     pass
+		# Now all @log decorated functions will use "MyApp" as the app_name
+		"""
+		cls._global_app_name = str(app_name).upper() if app_name is not None else None
+
 
 def log(func):
     """
@@ -466,7 +514,7 @@ def log(func):
 
     The log messages include:
     - Timestamp (DD-MM-YYYY HH:MM:SS)
-    - Module name (uppercase)
+    - Module name or global app_name (uppercase)
     - Function name (uppercase)
     - Log level
 
@@ -499,45 +547,53 @@ def log(func):
     # Logs: [START]: Function Execution Started...
     # Logs: [ERROR]: Function Failed: Something went wrong
 
+    Using global app name:
+
+    >>> Logger.set_global_app_name("MyApp")
+    >>> @log
+    ... def my_function():
+    ...     pass
+    # Now uses "MyApp" instead of module name
+
     Notes
     -----
     - The original function signature is preserved for compatibility
       with frameworks like FastAPI that use introspection.
     - Exceptions are logged but not re-raised; the function returns None
       on error.
-    - The module name is extracted using inspect.getmodule().
+    - The module name is extracted using inspect.getmodule() unless a
+      global app_name is set via Logger.set_global_app_name().
     """
-    __log__ = Logger(inspect.getmodule(func).__name__, func.__name__)
+    app_name = Logger._global_app_name if Logger._global_app_name is not None else inspect.getmodule(func).__name__
+    __log__ = Logger(func.__name__, app_name)
 
     if asyncio.iscoroutinefunction(func):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            __log__.start(f'Function Execution Started...')
+            __log__.start(f'Function Execution Started...', app_name=Logger._global_app_name)
             try:
                 res = await func(*args, **kwargs)
-                __log__.success(f'Function Finished')
+                __log__.success(f'Function Finished', app_name=Logger._global_app_name)
 
                 return res
             except Exception as e:
-                __log__.error(f'Function Failed: {str(e)}')
+                __log__.error(f'Function Failed: {str(e)}', app_name=Logger._global_app_name)
                 raise e
 
-        # Preserve the original signature for FastAPI
         async_wrapper.__signature__ = inspect.signature(func)
         return async_wrapper
     else:
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
-            __log__.start(f'Function Execution Started...')
+            __log__.start(f'Function Execution Started...', app_name=Logger._global_app_name)
             try:
                 res = func(*args, **kwargs)
-                __log__.success(f'Function Finished')
+                __log__.success(f'Function Finished', app_name=Logger._global_app_name)
 
                 return res
             except Exception as e:
-                __log__.error(f'Function Failed: {str(e)}')
+                __log__.error(f'Function Failed: {str(e)}', app_name=Logger._global_app_name)
 
-        # Preserve the original signature for FastAPI
         sync_wrapper.__signature__ = inspect.signature(func)
         return sync_wrapper

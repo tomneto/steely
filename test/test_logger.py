@@ -15,7 +15,7 @@ class TestLoggerInit:
 
     def test_logger_basic_init(self):
         """Test basic Logger initialization."""
-        logger = Logger("test-app", "test-owner")
+        logger = Logger("test-owner", "test-app")
 
         assert logger.app_name_upper == "TEST-APP"
         assert logger.owner == "test-owner"
@@ -23,46 +23,46 @@ class TestLoggerInit:
         assert logger.path is None
 
     def test_logger_with_none_app_name(self):
-        """Test Logger with None app_name uses default."""
-        logger = Logger(None, "owner")
+        """Test Logger with None app_name is None."""
+        logger = Logger("owner")
 
-        assert logger.app_name_upper == "YOUR-APP-NAME-GOES-HERE"
+        assert logger.app_name_upper is None
 
     def test_logger_with_destination(self):
         """Test Logger with custom destination path."""
-        logger = Logger("app", "owner", destination="/tmp/logs")
+        logger = Logger("owner", "app", destination="/tmp/logs")
 
         assert logger.path == "/tmp/logs"
 
     def test_logger_debug_false(self):
         """Test Logger with debug=False."""
-        logger = Logger("app", "owner", debug=False)
+        logger = Logger("owner", "app", debug=False)
 
         assert logger.debug is False
         assert logger.environment is None
 
     def test_logger_debug_true_sets_environment(self):
         """Test Logger with debug=True sets environment."""
-        logger = Logger("app", "owner", debug=True)
+        logger = Logger("owner", "app", debug=True)
 
         assert logger.debug is True
         assert logger.environment == "debug"
 
     def test_logger_clean_flag(self):
         """Test Logger with clean=True sets master_clean."""
-        logger = Logger("app", "owner", clean=True)
+        logger = Logger("owner", "app", clean=True)
 
         assert logger.master_clean is True
 
     def test_logger_kwargs_stored(self):
         """Test Logger stores additional kwargs."""
-        logger = Logger("app", "owner", custom_key="value", another="param")
+        logger = Logger("owner", "app", custom_key="value", another="param")
 
         assert logger.kwargs == {"custom_key": "value", "another": "param"}
 
     def test_logger_app_name_converted_to_uppercase(self):
         """Test Logger converts app_name to uppercase."""
-        logger = Logger("my-app", "owner")
+        logger = Logger("owner", "my-app")
 
         assert logger.app_name_upper == "MY-APP"
 
@@ -72,7 +72,7 @@ class TestLoggerLog:
 
     def test_log_returns_true(self):
         """Test that log method returns True."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         result = logger.log("INFO", "Test message")
 
@@ -80,7 +80,7 @@ class TestLoggerLog:
 
     def test_log_spawns_thread(self):
         """Test that log method spawns a thread."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         with patch('threading.Thread') as mock_thread:
             mock_thread_instance = MagicMock()
@@ -93,7 +93,7 @@ class TestLoggerLog:
 
     def test_log_passes_correct_kwargs_to_thread(self):
         """Test that log passes correct kwargs to subprocess_log."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         with patch('threading.Thread') as mock_thread:
             logger.log("WARNING", "Warning message", app_name="custom-app", clean=True)
@@ -110,7 +110,7 @@ class TestLoggerSubprocessLog:
 
     def test_subprocess_log_info_level(self, capsys):
         """Test subprocess_log with INFO level."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         content = Logger._subprocess_log(
             logger, "INFO", "Info message", supress=False, debug=True
@@ -123,7 +123,7 @@ class TestLoggerSubprocessLog:
 
     def test_subprocess_log_warning_level(self, capsys):
         """Test subprocess_log with WARNING level."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         content = Logger._subprocess_log(
             logger, "WARNING", "Warning message", supress=False, debug=True
@@ -134,7 +134,7 @@ class TestLoggerSubprocessLog:
 
     def test_subprocess_log_error_level(self, capsys):
         """Test subprocess_log with ERROR level."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         content = Logger._subprocess_log(
             logger, "ERROR", "Error message", supress=False, debug=True
@@ -145,7 +145,7 @@ class TestLoggerSubprocessLog:
 
     def test_subprocess_log_custom_app_name(self, capsys):
         """Test subprocess_log with custom app_name."""
-        logger = Logger("original-app", "owner")
+        logger = Logger("owner", "original-app")
 
         content = Logger._subprocess_log(
             logger, "INFO", "Message", app_name="custom-app", supress=False, debug=True
@@ -155,7 +155,7 @@ class TestLoggerSubprocessLog:
 
     def test_subprocess_log_level_uppercase(self, capsys):
         """Test subprocess_log converts level to uppercase."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         content = Logger._subprocess_log(
             logger, "info", "Message", supress=False, debug=True
@@ -165,7 +165,7 @@ class TestLoggerSubprocessLog:
 
     def test_subprocess_log_with_extra_kwargs(self, capsys):
         """Test subprocess_log includes extra kwargs in message."""
-        logger = Logger("app", "owner", tag="mytag")
+        logger = Logger("owner", "app", tag="mytag")
 
         content = Logger._subprocess_log(
             logger, "INFO", "Message", supress=False, debug=True, extra="value"
@@ -177,7 +177,7 @@ class TestLoggerSubprocessLog:
     def test_subprocess_log_writes_to_file(self):
         """Test subprocess_log writes to log file when path is set."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            logger = Logger("app", "owner", destination=tmpdir, debug=False)
+            logger = Logger("owner", "app", destination=tmpdir, debug=False)
 
             Logger._subprocess_log(
                 logger, "INFO", "File log message", supress=False, debug=True
@@ -194,7 +194,7 @@ class TestLoggerSubprocessLog:
     def test_subprocess_log_with_debug_environment(self):
         """Test subprocess_log creates debug directory when environment is debug."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            logger = Logger("app", "owner", destination=tmpdir, debug=True)
+            logger = Logger("owner", "app", destination=tmpdir, debug=True)
 
             Logger._subprocess_log(
                 logger, "INFO", "Debug message", supress=False, debug=True
@@ -209,7 +209,7 @@ class TestLoggerSubprocessLog:
 
     def test_subprocess_log_timestamp_format(self, capsys):
         """Test subprocess_log includes properly formatted timestamp."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         content = Logger._subprocess_log(
             logger, "INFO", "Message", supress=False, debug=True
@@ -226,7 +226,7 @@ class TestLoggerCallable:
 
     def test_logger_callable(self):
         """Test that Logger instance is callable."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         with patch.object(logger, 'log') as mock_log:
             logger("INFO", "Callable message")
@@ -235,7 +235,7 @@ class TestLoggerCallable:
 
     def test_logger_callable_with_kwargs(self):
         """Test Logger callable with kwargs."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         with patch.object(logger, 'log') as mock_log:
             logger("ERROR", "Error", app_name="test", clean=True)
@@ -263,7 +263,7 @@ class TestLoggerLevelColors:
     ])
     def test_level_colors(self, level, expected_color, capsys):
         """Test that different levels use correct colors."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
 
         Logger._subprocess_log(
             logger, level, "Message", supress=False, debug=True
@@ -278,7 +278,7 @@ class TestLoggerCleanFlag:
 
     def test_clean_flag_triggers_clear(self):
         """Test that clean flag triggers screen clear."""
-        logger = Logger("app", "owner")
+        logger = Logger("owner", "app")
         logger.clean = True
 
         with patch('os.system') as mock_system:
@@ -290,7 +290,7 @@ class TestLoggerCleanFlag:
 
     def test_master_clean_keeps_clean_flag(self):
         """Test that master_clean keeps clean flag True."""
-        logger = Logger("app", "owner", clean=True)
+        logger = Logger("owner", "app", clean=True)
         logger.clean = True
 
         with patch('os.system'):
@@ -314,3 +314,134 @@ class TestRelativeFunction:
         expected_dir = os.path.dirname(os.path.abspath(__file__).replace("test/test_logger.py", "steely/logger/__init__.py"))
         # Just verify it's constructing a path with the filename
         assert result.endswith("test.txt")
+
+
+class TestLoggerSetAppName:
+    """Tests for Logger.set_app_name instance method."""
+
+    def test_logger_without_app_name_does_not_print_it(self, capsys):
+        """Test that logger without app_name doesn't print app_name field."""
+        logger = Logger("owner")
+
+        Logger._subprocess_log(logger, "INFO", "Test message", supress=False, debug=True)
+
+        captured = capsys.readouterr()
+        # Should have owner but not app_name (no double dash pattern " - [")
+        assert "[OWNER]" in captured.out
+        assert " - [" not in captured.out
+
+    def test_set_app_name_changes_app_name(self):
+        """Test that set_app_name changes the app_name."""
+        logger = Logger("owner", "OriginalApp")
+
+        assert logger.app_name_upper == "ORIGINALAPP"
+
+        logger.set_app_name("NewApp")
+
+        assert logger.app_name_upper == "NEWAPP"
+
+    def test_set_app_name_converts_to_uppercase(self):
+        """Test that set_app_name converts to uppercase."""
+        logger = Logger("owner", "app")
+
+        logger.set_app_name("lowercase-app")
+
+        assert logger.app_name_upper == "LOWERCASE-APP"
+
+    def test_set_app_name_with_none(self):
+        """Test that set_app_name with None sets app_name to None."""
+        logger = Logger("owner", "app")
+
+        logger.set_app_name(None)
+
+        assert logger.app_name_upper is None
+
+    def test_set_app_name_affects_subsequent_logs(self, capsys):
+        """Test that set_app_name affects subsequent log messages."""
+        logger = Logger("owner", "FirstApp")
+
+        # Log with first app name
+        Logger._subprocess_log(logger, "INFO", "First message", supress=False, debug=True)
+
+        logger.set_app_name("SecondApp")
+
+        # Log with second app name
+        Logger._subprocess_log(logger, "INFO", "Second message", supress=False, debug=True)
+
+        captured = capsys.readouterr()
+        assert "[FIRSTAPP]" in captured.out
+        assert "[SECONDAPP]" in captured.out
+
+    def test_set_app_name_multiple_times(self):
+        """Test setting app_name multiple times."""
+        logger = Logger("owner", "App1")
+
+        logger.set_app_name("App2")
+        assert logger.app_name_upper == "APP2"
+
+        logger.set_app_name("App3")
+        assert logger.app_name_upper == "APP3"
+
+        logger.set_app_name("App4")
+        assert logger.app_name_upper == "APP4"
+
+    def test_set_app_name_with_special_characters(self):
+        """Test set_app_name with special characters."""
+        logger = Logger("owner", "app")
+
+        logger.set_app_name("my-app_v2.0")
+
+        assert logger.app_name_upper == "MY-APP_V2.0"
+
+
+class TestLoggerSetGlobalAppName:
+    """Tests for Logger.set_global_app_name class method."""
+
+    def setup_method(self):
+        """Reset global app name before each test."""
+        Logger._global_app_name = None
+
+    def teardown_method(self):
+        """Reset global app name after each test."""
+        Logger._global_app_name = None
+
+    def test_set_global_app_name_sets_class_variable(self):
+        """Test that set_global_app_name sets the class variable."""
+        Logger.set_global_app_name("GlobalApp")
+
+        assert Logger._global_app_name == "GLOBALAPP"
+
+    def test_set_global_app_name_converts_to_uppercase(self):
+        """Test that set_global_app_name converts to uppercase."""
+        Logger.set_global_app_name("lowercase-global")
+
+        assert Logger._global_app_name == "LOWERCASE-GLOBAL"
+
+    def test_set_global_app_name_with_none(self):
+        """Test that set_global_app_name with None clears it."""
+        Logger.set_global_app_name("GlobalApp")
+        Logger.set_global_app_name(None)
+
+        assert Logger._global_app_name is None
+
+    def test_set_global_app_name_affects_all_instances(self):
+        """Test that set_global_app_name is shared across all instances."""
+        Logger.set_global_app_name("SharedApp")
+
+        logger1 = Logger("owner1", "Local1")
+        logger2 = Logger("owner2", "Local2")
+
+        assert Logger._global_app_name == "SHAREDAPP"
+        assert logger1._global_app_name == "SHAREDAPP"
+        assert logger2._global_app_name == "SHAREDAPP"
+
+    def test_set_global_app_name_multiple_times(self):
+        """Test setting global app_name multiple times."""
+        Logger.set_global_app_name("Global1")
+        assert Logger._global_app_name == "GLOBAL1"
+
+        Logger.set_global_app_name("Global2")
+        assert Logger._global_app_name == "GLOBAL2"
+
+        Logger.set_global_app_name("Global3")
+        assert Logger._global_app_name == "GLOBAL3"

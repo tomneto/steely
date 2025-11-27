@@ -169,9 +169,9 @@ class TestLogDecorator:
             await asyncio.sleep(0.01)
             raise RuntimeError("Async error")
 
-        # The exception should not propagate because the decorator catches it
-        result = await async_failing()
-        assert result is None
+        # The async decorator re-raises the exception after logging
+        with pytest.raises(RuntimeError, match="Async error"):
+            await async_failing()
 
         # Give thread time to complete
         import time
@@ -432,3 +432,184 @@ class TestLogDecoratorEdgeCases:
 
         result = await multi_await()
         assert result == 3
+
+
+class TestLogDecoratorWithGlobalAppName:
+    """Tests for log decorator with global app_name."""
+
+    def setup_method(self):
+        """Reset global app name before each test."""
+        Logger._global_app_name = None
+
+    def teardown_method(self):
+        """Reset global app name after each test."""
+        Logger._global_app_name = None
+
+    def test_log_decorator_uses_global_app_name(self, capsys):
+        """Test that log decorator uses global app_name when set."""
+        Logger.set_global_app_name("GlobalTestApp")
+
+        @log
+        def test_func():
+            return "result"
+
+        result = test_func()
+        assert result == "result"
+
+        # Give thread time to complete
+        import time
+        time.sleep(0.1)
+
+        captured = capsys.readouterr()
+        assert "[GLOBALTESTAPP]" in captured.out
+
+    def test_log_decorator_uses_module_name_when_global_not_set(self, capsys):
+        """Test that log decorator uses module name when global app_name is not set."""
+        @log
+        def test_func():
+            return "result"
+
+        result = test_func()
+
+        import time
+        time.sleep(0.1)
+
+        captured = capsys.readouterr()
+        # Should use module name (test_log_decorator or __main__)
+        assert "TEST_LOG_DECORATOR" in captured.out.upper() or "__MAIN__" in captured.out.upper()
+
+    def test_log_decorator_global_app_name_with_multiple_functions(self, capsys):
+        """Test that global app_name applies to multiple decorated functions."""
+        Logger.set_global_app_name("SharedApp")
+
+        @log
+        def func_one():
+            return 1
+
+        @log
+        def func_two():
+            return 2
+
+        func_one()
+        func_two()
+
+        import time
+        time.sleep(0.1)
+
+        captured = capsys.readouterr()
+        # Both functions should use SharedApp
+        output_lines = captured.out.split('\n')
+        shared_app_count = sum(1 for line in output_lines if "[SHAREDAPP]" in line)
+        assert shared_app_count >= 2  # At least 2 messages (start/success for each)
+
+    def test_log_decorator_changing_global_app_name(self, capsys):
+        """Test that changing global app_name affects new decorations."""
+        Logger.set_global_app_name("FirstApp")
+
+        @log
+        def first_func():
+            return 1
+
+        first_func()
+
+        # Change global app name
+        Logger.set_global_app_name("SecondApp")
+
+        @log
+        def second_func():
+            return 2
+
+        second_func()
+
+        import time
+        time.sleep(0.1)
+
+        captured = capsys.readouterr()
+        # First function should use FirstApp (it was decorated with FirstApp)
+        assert "[FIRSTAPP]" in captured.out
+        # Second function should use SecondApp
+        assert "[SECONDAPP]" in captured.out
+
+    def test_log_decorator_global_app_name_uppercase_conversion(self, capsys):
+        """Test that global app_name is converted to uppercase."""
+        Logger.set_global_app_name("lowercase-app")
+
+        @log
+        def test_func():
+            return "test"
+
+        test_func()
+
+        import time
+        time.sleep(0.1)
+
+        captured = capsys.readouterr()
+        assert "[LOWERCASE-APP]" in captured.out
+
+    @pytest.mark.asyncio
+    async def test_async_log_decorator_uses_global_app_name(self, capsys):
+        """Test that async functions use global app_name."""
+        Logger.set_global_app_name("AsyncGlobalApp")
+
+        @log
+        async def async_func():
+            await asyncio.sleep(0.01)
+            return "async result"
+
+        result = await async_func()
+        assert result == "async result"
+
+        import time
+        time.sleep(0.1)
+
+        captured = capsys.readouterr()
+        assert "[ASYNCGLOBALAPP]" in captured.out
+
+    def test_log_decorator_with_none_global_app_name(self, capsys):
+        """Test that None global app_name reverts to module name."""
+        Logger.set_global_app_name("TempApp")
+        Logger.set_global_app_name(None)
+
+        @log
+        def test_func():
+            return "test"
+
+        test_func()
+
+        import time
+        time.sleep(0.1)
+
+        captured = capsys.readouterr()
+        # Should use module name, not TempApp
+        assert "[TEMPAPP]" not in captured.out
+        assert "TEST_LOG_DECORATOR" in captured.out.upper() or "__MAIN__" in captured.out.upper()
+
+    def test_log_decorator_instance_app_name_overrides_global(self):
+        """Test that Logger instances maintain their own app_name even with global set."""
+        Logger.set_global_app_name("GlobalApp")
+
+        # Create a logger directly with a different app name
+        logger = Logger("owner", "InstanceApp")
+
+        # The instance should have its own app_name
+        assert logger.app_name_upper == "INSTANCEAPP"
+        # But the global is still set
+        assert Logger._global_app_name == "GLOBALAPP"
+
+    def test_log_decorator_captures_app_name_at_decoration_time(self, capsys):
+        """Test that decorator captures app_name value at decoration time."""
+        Logger.set_global_app_name("AppAtDecorationTime")
+
+        @log
+        def decorated_func():
+            return "value"
+
+        # The logger instance created at decoration time has AppAtDecorationTime
+        decorated_func()
+
+        import time
+        time.sleep(0.1)
+
+        captured = capsys.readouterr()
+        # Should use the app name that was set at decoration time
+        assert "[APPATDECORATIONTIME]" in captured.out
