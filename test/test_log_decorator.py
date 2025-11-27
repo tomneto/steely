@@ -613,3 +613,53 @@ class TestLogDecoratorWithGlobalAppName:
         captured = capsys.readouterr()
         # Should use the app name that was set at decoration time
         assert "[APPATDECORATIONTIME]" in captured.out
+
+    def test_log_decorator_uses_global_app_name_dynamically(self, capsys):
+        """Test that decorator uses global app_name dynamically at runtime, not at decoration time."""
+        # Decorate function BEFORE setting global app_name
+        @log
+        def dynamic_func():
+            return "result"
+
+        # Call with no global app_name (should use module name)
+        dynamic_func()
+
+        import time
+        time.sleep(0.1)
+
+        captured1 = capsys.readouterr()
+        # Should use module name
+        assert "TEST_LOG_DECORATOR" in captured1.out.upper() or "__MAIN__" in captured1.out.upper()
+
+        # Now set global app_name
+        Logger.set_global_app_name("DynamicApp")
+
+        # Call the SAME decorated function again
+        dynamic_func()
+        time.sleep(0.1)
+
+        captured2 = capsys.readouterr()
+        # Should now use the newly set global app_name
+        assert "[DYNAMICAPP]" in captured2.out
+
+        # Change global app_name again
+        Logger.set_global_app_name("AnotherApp")
+
+        # Call again
+        dynamic_func()
+        time.sleep(0.1)
+
+        captured3 = capsys.readouterr()
+        # Should use the updated global app_name
+        assert "[ANOTHERAPP]" in captured3.out
+
+        # Reset to None
+        Logger.set_global_app_name(None)
+
+        # Call again
+        dynamic_func()
+        time.sleep(0.1)
+
+        captured4 = capsys.readouterr()
+        # Should revert to module name
+        assert "TEST_LOG_DECORATOR" in captured4.out.upper() or "__MAIN__" in captured4.out.upper()

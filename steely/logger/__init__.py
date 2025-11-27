@@ -304,17 +304,27 @@ class Logger:
 		level = level.upper()
 		owner = logger.owner.upper()
 		correspondent_clr = UnicodeColors.reset
-		_current_app = logger.app_name_upper
 
+		# Determine which app_name to use (priority order):
+		# 1. Explicit app_name parameter
+		# 2. Global app_name (if set)
+		# 3. Instance app_name
 		if app_name is not None:
+			# Explicitly provided app_name takes highest priority
 			_current_app = str(app_name).upper()
+		elif Logger._global_app_name is not None:
+			# Use global app_name if set
+			_current_app = Logger._global_app_name
+		else:
+			# Fall back to instance app_name
+			_current_app = logger.app_name_upper
 
 		try:
 			del kwargs["suppress"]
 		except: pass
 
 		# Build message with optional app_name
-		app_name_part = f" - [{_current_app}]" if _current_app is not None else ""
+		app_name_part = f" - [{_current_app}]" if _current_app is not None else " - "
 		message_enclose = timestamp + app_name_part + f" [{owner}]" + ' ' + ' '.join(
 			[f'[{str(item).upper()}]' for item in [*logger.kwargs.values()]]) + ' '.join(
 			[f'[{str(item).upper()}]' for item in [*kwargs.values()]]) + f" [{level}]"
@@ -564,20 +574,24 @@ def log(func):
     - The module name is extracted using inspect.getmodule() unless a
       global app_name is set via Logger.set_global_app_name().
     """
-    app_name = Logger._global_app_name if Logger._global_app_name is not None else inspect.getmodule(func).__name__
-    __log__ = Logger(func.__name__, app_name)
+    # Store the module name as fallback
+    module_name = inspect.getmodule(func).__name__
+    # Create logger without app_name, will use global app_name dynamically at runtime
+    __log__ = Logger(func.__name__)
 
     if asyncio.iscoroutinefunction(func):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            __log__.start(f'Function Execution Started...', app_name=Logger._global_app_name)
+            # Use global app_name if set, otherwise use module name
+            current_app_name = Logger._global_app_name if Logger._global_app_name is not None else module_name
+            __log__.start(f'Function Execution Started...', app_name=current_app_name)
             try:
                 res = await func(*args, **kwargs)
-                __log__.success(f'Function Finished', app_name=Logger._global_app_name)
+                __log__.success(f'Function Finished', app_name=current_app_name)
 
                 return res
             except Exception as e:
-                __log__.error(f'Function Failed: {str(e)}', app_name=Logger._global_app_name)
+                __log__.error(f'Function Failed: {str(e)}', app_name=current_app_name)
                 raise e
 
         async_wrapper.__signature__ = inspect.signature(func)
@@ -586,14 +600,16 @@ def log(func):
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
-            __log__.start(f'Function Execution Started...', app_name=Logger._global_app_name)
+            # Use global app_name if set, otherwise use module name
+            current_app_name = Logger._global_app_name if Logger._global_app_name is not None else module_name
+            __log__.start(f'Function Execution Started...', app_name=current_app_name)
             try:
                 res = func(*args, **kwargs)
-                __log__.success(f'Function Finished', app_name=Logger._global_app_name)
+                __log__.success(f'Function Finished', app_name=current_app_name)
 
                 return res
             except Exception as e:
-                __log__.error(f'Function Failed: {str(e)}', app_name=Logger._global_app_name)
+                __log__.error(f'Function Failed: {str(e)}', app_name=current_app_name)
 
         sync_wrapper.__signature__ = inspect.signature(func)
         return sync_wrapper

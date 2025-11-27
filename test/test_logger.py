@@ -320,15 +320,22 @@ class TestLoggerSetAppName:
     """Tests for Logger.set_app_name instance method."""
 
     def test_logger_without_app_name_does_not_print_it(self, capsys):
-        """Test that logger without app_name doesn't print app_name field."""
+        """Test that logger without app_name still has dash but no app_name bracket."""
         logger = Logger("owner")
 
         Logger._subprocess_log(logger, "INFO", "Test message", supress=False, debug=True)
 
         captured = capsys.readouterr()
-        # Should have owner but not app_name (no double dash pattern " - [")
+        # Should have " - [OWNER]" format (dash is present but no app_name in brackets before OWNER)
         assert "[OWNER]" in captured.out
-        assert " - [" not in captured.out
+        assert " - [OWNER]" in captured.out
+        # Should not have two sets of brackets with app_name like " - [APPNAME] [OWNER]"
+        import re
+        # Check that there's no pattern of " - [SOMETHING] [OWNER]" where SOMETHING != OWNER
+        pattern = r' - \[([^\]]+)\] \[OWNER\]'
+        matches = re.findall(pattern, captured.out)
+        # If there are matches, they should only be where [SOMETHING] == OWNER (meaning no app_name)
+        assert len(matches) == 0 or all(m == "OWNER" for m in matches)
 
     def test_set_app_name_changes_app_name(self):
         """Test that set_app_name changes the app_name."""
@@ -445,3 +452,74 @@ class TestLoggerSetGlobalAppName:
 
         Logger.set_global_app_name("Global3")
         assert Logger._global_app_name == "GLOBAL3"
+
+    def test_global_app_name_affects_all_logger_instances(self, capsys):
+        """Test that set_global_app_name affects all Logger instances dynamically."""
+        # Create loggers with different app names
+        logger1 = Logger("owner1", "App1")
+        logger2 = Logger("owner2", "App2")
+        logger3 = Logger("owner3")  # No app_name
+
+        # Log before setting global app_name
+        Logger._subprocess_log(logger1, "INFO", "Message 1", supress=False, debug=True)
+        Logger._subprocess_log(logger2, "INFO", "Message 2", supress=False, debug=True)
+        Logger._subprocess_log(logger3, "INFO", "Message 3", supress=False, debug=True)
+
+        captured1 = capsys.readouterr()
+        assert "[APP1]" in captured1.out
+        assert "[APP2]" in captured1.out
+        # logger3 has no app_name, just owner
+
+        # Set global app_name
+        Logger.set_global_app_name("GlobalApp")
+
+        # Log again - should use GlobalApp
+        Logger._subprocess_log(logger1, "INFO", "Message 4", supress=False, debug=True)
+        Logger._subprocess_log(logger2, "INFO", "Message 5", supress=False, debug=True)
+        Logger._subprocess_log(logger3, "INFO", "Message 6", supress=False, debug=True)
+
+        captured2 = capsys.readouterr()
+        # All should use GlobalApp now
+        assert captured2.out.count("[GLOBALAPP]") == 3
+        assert "[APP1]" not in captured2.out
+        assert "[APP2]" not in captured2.out
+
+        # Reset global app_name
+        Logger.set_global_app_name(None)
+
+        # Should revert to original behavior
+        Logger._subprocess_log(logger1, "INFO", "Message 7", supress=False, debug=True)
+        Logger._subprocess_log(logger2, "INFO", "Message 8", supress=False, debug=True)
+        Logger._subprocess_log(logger3, "INFO", "Message 9", supress=False, debug=True)
+
+        captured3 = capsys.readouterr()
+        assert "[APP1]" in captured3.out
+        assert "[APP2]" in captured3.out
+        assert "[GLOBALAPP]" not in captured3.out
+
+    def test_explicit_app_name_overrides_global(self, capsys):
+        """Test that explicit app_name parameter overrides global app_name."""
+        Logger.set_global_app_name("GlobalApp")
+        logger = Logger("owner", "InstanceApp")
+
+        # Use global app_name (no explicit parameter)
+        Logger._subprocess_log(logger, "INFO", "Message 1", supress=False, debug=True)
+
+        captured1 = capsys.readouterr()
+        assert "[GLOBALAPP]" in captured1.out
+
+        # Override with explicit app_name
+        Logger._subprocess_log(logger, "INFO", "Message 2", app_name="ExplicitApp", supress=False, debug=True)
+
+        captured2 = capsys.readouterr()
+        assert "[EXPLICITAPP]" in captured2.out
+        assert "[GLOBALAPP]" not in captured2.out
+
+        # Back to global
+        Logger._subprocess_log(logger, "INFO", "Message 3", supress=False, debug=True)
+
+        captured3 = capsys.readouterr()
+        assert "[GLOBALAPP]" in captured3.out
+
+        # Reset
+        Logger.set_global_app_name(None)
