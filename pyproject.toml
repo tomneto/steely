@@ -1,12 +1,12 @@
 [project]
 name = "steely"
-version = "1.0.0.0"
+version = "1.0.0.4"
 description = "A Python debugging and analysis toolkit with beautiful, colorful terminal output. Provides decorators for automatic logging, execution timing, and real-time variable tracking."
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Steely Contributors"}
+    {name = "Tom Neto"}
 ]
 keywords = [
     "debugging",
@@ -45,10 +45,10 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/your-username/steely"
-Documentation = "https://github.com/your-username/steely#readme"
-Repository = "https://github.com/your-username/steely"
-Issues = "https://github.com/your-username/steely/issues"
+Homepage = "https://github.com/tomneto/steely"
+Documentation = "https://github.com/tomneto/steely#readme"
+Repository = "https://github.com/tomneto/steely"
+Issues = "https://github.com/tomneto/steely/issues"
 
 [build-system]
 requires = ["hatchling"]

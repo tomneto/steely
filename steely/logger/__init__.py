@@ -520,6 +520,7 @@ def log(func):
                 return res
             except Exception as e:
                 __log__.error(f'Function Failed: {str(e)}')
+                raise e
 
         # Preserve the original signature for FastAPI
         async_wrapper.__signature__ = inspect.signature(func)
