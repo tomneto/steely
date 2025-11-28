@@ -61,15 +61,11 @@ Logging to file:
 
 import asyncio
 import inspect
-import multiprocessing
 import os
 import threading
-from functools import wraps
-from time import sleep
 from datetime import datetime
-from typing import Literal, Any
-
-from steely.design import UnicodeColors
+from functools import wraps
+from typing import Literal
 
 __all__ = ["Logger", "log", "relative", "Level"]
 
@@ -232,8 +228,8 @@ class Logger:
 		if debug:
 			self.environment = "debug"
 
-	@staticmethod
-	def _subprocess_log(logger, level: Level, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, self_debug: bool = True, **kwargs):
+    def log(self, level: Level, message, app_name: str = None, clean: bool = False, supress: bool = False,
+            debug: bool = True, self_debug: bool = True, **kwargs):
 		"""
 		Internal method that performs the actual logging operation.
 
@@ -275,13 +271,13 @@ class Logger:
 
 		def generate_log_path():
 			# Initialize base directory path
-			if logger.environment is not None and logger.path is not None:
+            if self.environment is not None and self.path is not None:
 				try:
-					base_dir = f"{logger.path}_{logger.environment}"
+                    base_dir = f"{self.path}_{self.environment}"
 				except TypeError:
-					base_dir = os.path.join('.', f"log_{logger.environment}")
+                    base_dir = os.path.join('.', f"log_{self.environment}")
 			else:
-				base_dir = str(logger.path) if logger.path is not None else '.'
+                base_dir = str(self.path) if self.path is not None else '.'
 
 			# Ensure base_dir is treated as a directory
 			try:
@@ -295,14 +291,14 @@ class Logger:
 
 			return full_path
 
-		if logger.clean:
+        if self.clean:
 			os.system('cls' if os.name == 'nt' else 'clear')
-			if not logger.master_clean:
-				logger.clean = False
+            if not self.master_clean:
+                self.clean = False
 
 		timestamp = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 		level = level.upper()
-		owner = logger.owner.upper()
+        owner = self.owner.upper()
 		correspondent_clr = UnicodeColors.reset
 
 		# Determine which app_name to use (priority order):
@@ -312,12 +308,12 @@ class Logger:
 		if app_name is not None:
 			# Explicitly provided app_name takes highest priority
 			_current_app = str(app_name).upper()
-		elif Logger._global_app_name is not None:
+        elif self._global_app_name is not None:
 			# Use global app_name if set
-			_current_app = Logger._global_app_name
+            _current_app = self._global_app_name
 		else:
 			# Fall back to instance app_name
-			_current_app = logger.app_name_upper
+            _current_app = self.app_name_upper
 
 		try:
 			del kwargs["suppress"]
@@ -326,12 +322,12 @@ class Logger:
 		# Build message with optional app_name
 		app_name_part = f" - [{_current_app}]" if _current_app is not None else " - "
 		message_enclose = timestamp + app_name_part + f" [{owner}]" + ' ' + ' '.join(
-			[f'[{str(item).upper()}]' for item in [*logger.kwargs.values()]]) + ' '.join(
+            [f'[{str(item).upper()}]' for item in [*self.kwargs.values()]]) + ' '.join(
 			[f'[{str(item).upper()}]' for item in [*kwargs.values()]]) + f" [{level}]"
 
 		content = f"\n{message_enclose.replace('  ', ' ')}: {str(message)}"
 
-		if logger.path is not None:
+        if self.path is not None:
 			with open(generate_log_path(), 'a+') as f:
 				f.write(str(content))
 
@@ -349,11 +345,12 @@ class Logger:
 		if not supress or debug or self_debug:
 			print(correspondent_clr, content[1:], UnicodeColors.reset)
 			if clean:
-				logger.clean = True
+                self.clean = True
 
 		return content
 
-	def log(self, level: Level, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def _log(self, level: Level, message, app_name: str = None, clean: bool = False, supress: bool = False,
+             debug: bool = True, **kwargs) -> bool:
 		"""
 		Log a message with the specified level.
 
