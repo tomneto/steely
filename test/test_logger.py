@@ -1,13 +1,11 @@
 import os
 import tempfile
-import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime
-import threading
-import time
+from unittest.mock import patch
 
-from steely.logger import Logger
+import pytest
+
 from steely.design import UnicodeColors
+from steely.logger import Logger
 
 
 class TestLoggerInit:
@@ -70,118 +68,79 @@ class TestLoggerInit:
 class TestLoggerLog:
     """Tests for Logger.log method."""
 
-    def test_log_returns_true(self):
-        """Test that log method returns True."""
+    def test_log_returns_content(self):
+        """Test that log method returns content string."""
         logger = Logger("owner", "app")
 
         result = logger.log("INFO", "Test message")
 
-        assert result is True
+        assert isinstance(result, str)
+        assert "Test message" in result
 
-    def test_log_spawns_thread(self):
-        """Test that log method spawns a thread."""
+
+class TestLoggerLogMethod:
+    """Tests for Logger.log method."""
+
+    def test_log_info_level(self, capsys):
+        """Test log with INFO level."""
         logger = Logger("owner", "app")
 
-        with patch('threading.Thread') as mock_thread:
-            mock_thread_instance = MagicMock()
-            mock_thread.return_value = mock_thread_instance
-
-            logger.log("INFO", "Test message")
-
-            mock_thread.assert_called_once()
-            mock_thread_instance.start.assert_called_once()
-
-    def test_log_passes_correct_kwargs_to_thread(self):
-        """Test that log passes correct kwargs to subprocess_log."""
-        logger = Logger("owner", "app")
-
-        with patch('threading.Thread') as mock_thread:
-            logger.log("WARNING", "Warning message", app_name="custom-app", clean=True)
-
-            call_kwargs = mock_thread.call_args[1]['kwargs']
-            assert call_kwargs['level'] == "WARNING"
-            assert call_kwargs['message'] == "Warning message"
-            assert call_kwargs['app_name'] == "custom-app"
-            assert call_kwargs['clean'] is True
-
-
-class TestLoggerSubprocessLog:
-    """Tests for Logger._subprocess_log static method."""
-
-    def test_subprocess_log_info_level(self, capsys):
-        """Test subprocess_log with INFO level."""
-        logger = Logger("owner", "app")
-
-        content = Logger._subprocess_log(
-            logger, "INFO", "Info message", supress=False, debug=True
-        )
+        content = logger.log("INFO", "Info message", supress=False, debug=True)
 
         assert "[APP]" in content
         assert "[OWNER]" in content
         assert "[INFO]" in content
         assert "Info message" in content
 
-    def test_subprocess_log_warning_level(self, capsys):
-        """Test subprocess_log with WARNING level."""
+    def test_log_warning_level(self, capsys):
+        """Test log with WARNING level."""
         logger = Logger("owner", "app")
 
-        content = Logger._subprocess_log(
-            logger, "WARNING", "Warning message", supress=False, debug=True
-        )
+        content = logger.log("WARNING", "Warning message", supress=False, debug=True)
 
         assert "[WARNING]" in content
         assert "Warning message" in content
 
-    def test_subprocess_log_error_level(self, capsys):
-        """Test subprocess_log with ERROR level."""
+    def test_log_error_level(self, capsys):
+        """Test log with ERROR level."""
         logger = Logger("owner", "app")
 
-        content = Logger._subprocess_log(
-            logger, "ERROR", "Error message", supress=False, debug=True
-        )
+        content = logger.log("ERROR", "Error message", supress=False, debug=True)
 
         assert "[ERROR]" in content
         assert "Error message" in content
 
-    def test_subprocess_log_custom_app_name(self, capsys):
-        """Test subprocess_log with custom app_name."""
+    def test_log_custom_app_name(self, capsys):
+        """Test log with custom app_name."""
         logger = Logger("owner", "original-app")
 
-        content = Logger._subprocess_log(
-            logger, "INFO", "Message", app_name="custom-app", supress=False, debug=True
-        )
+        content = logger.log("INFO", "Message", app_name="custom-app", supress=False, debug=True)
 
         assert "[CUSTOM-APP]" in content
 
-    def test_subprocess_log_level_uppercase(self, capsys):
-        """Test subprocess_log converts level to uppercase."""
+    def test_log_level_uppercase(self, capsys):
+        """Test log converts level to uppercase."""
         logger = Logger("owner", "app")
 
-        content = Logger._subprocess_log(
-            logger, "info", "Message", supress=False, debug=True
-        )
+        content = logger.log("info", "Message", supress=False, debug=True)
 
         assert "[INFO]" in content
 
-    def test_subprocess_log_with_extra_kwargs(self, capsys):
-        """Test subprocess_log includes extra kwargs in message."""
+    def test_log_with_extra_kwargs(self, capsys):
+        """Test log includes extra kwargs in message."""
         logger = Logger("owner", "app", tag="mytag")
 
-        content = Logger._subprocess_log(
-            logger, "INFO", "Message", supress=False, debug=True, extra="value"
-        )
+        content = logger.log("INFO", "Message", supress=False, debug=True, extra="value")
 
         assert "[MYTAG]" in content
         assert "[VALUE]" in content
 
-    def test_subprocess_log_writes_to_file(self):
-        """Test subprocess_log writes to log file when path is set."""
+    def test_log_writes_to_file(self):
+        """Test log writes to log file when path is set."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = Logger("owner", "app", destination=tmpdir, debug=False)
 
-            Logger._subprocess_log(
-                logger, "INFO", "File log message", supress=False, debug=True
-            )
+            logger.log("INFO", "File log message", supress=False, debug=True)
 
             log_files = os.listdir(tmpdir)
             assert len(log_files) == 1
@@ -191,14 +150,12 @@ class TestLoggerSubprocessLog:
                 content = f.read()
                 assert "File log message" in content
 
-    def test_subprocess_log_with_debug_environment(self):
-        """Test subprocess_log creates debug directory when environment is debug."""
+    def test_log_with_debug_environment(self):
+        """Test log creates debug directory when environment is debug."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = Logger("owner", "app", destination=tmpdir, debug=True)
 
-            Logger._subprocess_log(
-                logger, "INFO", "Debug message", supress=False, debug=True
-            )
+            logger.log("INFO", "Debug message", supress=False, debug=True)
 
             expected_dir = f"{tmpdir}_debug"
             assert os.path.exists(expected_dir)
@@ -207,13 +164,11 @@ class TestLoggerSubprocessLog:
             import shutil
             shutil.rmtree(expected_dir, ignore_errors=True)
 
-    def test_subprocess_log_timestamp_format(self, capsys):
-        """Test subprocess_log includes properly formatted timestamp."""
+    def test_log_timestamp_format(self, capsys):
+        """Test log includes properly formatted timestamp."""
         logger = Logger("owner", "app")
 
-        content = Logger._subprocess_log(
-            logger, "INFO", "Message", supress=False, debug=True
-        )
+        content = logger.log("INFO", "Message", supress=False, debug=True)
 
         # Check timestamp format (DD-MM-YYYY HH:MM:SS)
         import re
@@ -265,9 +220,7 @@ class TestLoggerLevelColors:
         """Test that different levels use correct colors."""
         logger = Logger("owner", "app")
 
-        Logger._subprocess_log(
-            logger, level, "Message", supress=False, debug=True
-        )
+        logger.log(level, "Message", supress=False, debug=True)
 
         captured = capsys.readouterr()
         assert expected_color in captured.out
@@ -282,9 +235,7 @@ class TestLoggerCleanFlag:
         logger.clean = True
 
         with patch('os.system') as mock_system:
-            Logger._subprocess_log(
-                logger, "INFO", "Message", clean=False, supress=False, debug=True
-            )
+            logger.log("INFO", "Message", clean=False, supress=False, debug=True)
 
             mock_system.assert_called_once()
 
@@ -294,9 +245,7 @@ class TestLoggerCleanFlag:
         logger.clean = True
 
         with patch('os.system'):
-            Logger._subprocess_log(
-                logger, "INFO", "Message", clean=False, supress=False, debug=True
-            )
+            logger.log("INFO", "Message", clean=False, supress=False, debug=True)
 
             # master_clean should keep clean True
             assert logger.master_clean is True
@@ -323,7 +272,7 @@ class TestLoggerSetAppName:
         """Test that logger without app_name still has dash but no app_name bracket."""
         logger = Logger("owner")
 
-        Logger._subprocess_log(logger, "INFO", "Test message", supress=False, debug=True)
+        logger.log("INFO", "Test message", supress=False, debug=True)
 
         captured = capsys.readouterr()
         # Should have " - [OWNER]" format (dash is present but no app_name in brackets before OWNER)
@@ -368,12 +317,12 @@ class TestLoggerSetAppName:
         logger = Logger("owner", "FirstApp")
 
         # Log with first app name
-        Logger._subprocess_log(logger, "INFO", "First message", supress=False, debug=True)
+        logger.log("INFO", "First message", supress=False, debug=True)
 
         logger.set_app_name("SecondApp")
 
         # Log with second app name
-        Logger._subprocess_log(logger, "INFO", "Second message", supress=False, debug=True)
+        logger.log("INFO", "Second message", supress=False, debug=True)
 
         captured = capsys.readouterr()
         assert "[FIRSTAPP]" in captured.out
@@ -461,9 +410,9 @@ class TestLoggerSetGlobalAppName:
         logger3 = Logger("owner3")  # No app_name
 
         # Log before setting global app_name
-        Logger._subprocess_log(logger1, "INFO", "Message 1", supress=False, debug=True)
-        Logger._subprocess_log(logger2, "INFO", "Message 2", supress=False, debug=True)
-        Logger._subprocess_log(logger3, "INFO", "Message 3", supress=False, debug=True)
+        logger1.log("INFO", "Message 1", supress=False, debug=True)
+        logger2.log("INFO", "Message 2", supress=False, debug=True)
+        logger3.log("INFO", "Message 3", supress=False, debug=True)
 
         captured1 = capsys.readouterr()
         assert "[APP1]" in captured1.out
@@ -474,9 +423,9 @@ class TestLoggerSetGlobalAppName:
         Logger.set_global_app_name("GlobalApp")
 
         # Log again - should use GlobalApp
-        Logger._subprocess_log(logger1, "INFO", "Message 4", supress=False, debug=True)
-        Logger._subprocess_log(logger2, "INFO", "Message 5", supress=False, debug=True)
-        Logger._subprocess_log(logger3, "INFO", "Message 6", supress=False, debug=True)
+        logger1.log("INFO", "Message 4", supress=False, debug=True)
+        logger2.log("INFO", "Message 5", supress=False, debug=True)
+        logger3.log("INFO", "Message 6", supress=False, debug=True)
 
         captured2 = capsys.readouterr()
         # All should use GlobalApp now
@@ -488,9 +437,9 @@ class TestLoggerSetGlobalAppName:
         Logger.set_global_app_name(None)
 
         # Should revert to original behavior
-        Logger._subprocess_log(logger1, "INFO", "Message 7", supress=False, debug=True)
-        Logger._subprocess_log(logger2, "INFO", "Message 8", supress=False, debug=True)
-        Logger._subprocess_log(logger3, "INFO", "Message 9", supress=False, debug=True)
+        logger1.log("INFO", "Message 7", supress=False, debug=True)
+        logger2.log("INFO", "Message 8", supress=False, debug=True)
+        logger3.log("INFO", "Message 9", supress=False, debug=True)
 
         captured3 = capsys.readouterr()
         assert "[APP1]" in captured3.out
@@ -503,20 +452,20 @@ class TestLoggerSetGlobalAppName:
         logger = Logger("owner", "InstanceApp")
 
         # Use global app_name (no explicit parameter)
-        Logger._subprocess_log(logger, "INFO", "Message 1", supress=False, debug=True)
+        logger.log("INFO", "Message 1", supress=False, debug=True)
 
         captured1 = capsys.readouterr()
         assert "[GLOBALAPP]" in captured1.out
 
         # Override with explicit app_name
-        Logger._subprocess_log(logger, "INFO", "Message 2", app_name="ExplicitApp", supress=False, debug=True)
+        logger.log("INFO", "Message 2", app_name="ExplicitApp", supress=False, debug=True)
 
         captured2 = capsys.readouterr()
         assert "[EXPLICITAPP]" in captured2.out
         assert "[GLOBALAPP]" not in captured2.out
 
         # Back to global
-        Logger._subprocess_log(logger, "INFO", "Message 3", supress=False, debug=True)
+        logger.log("INFO", "Message 3", supress=False, debug=True)
 
         captured3 = capsys.readouterr()
         assert "[GLOBALAPP]" in captured3.out
