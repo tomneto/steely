@@ -177,7 +177,7 @@ class Logger:
         The owner/component name.
     path : str or None
         The destination path for file logging.
-    debug : bool
+    _debug : bool
         Whether debug mode is enabled.
     environment : str or None
         The current environment ("debug" or None).
@@ -240,7 +240,7 @@ class Logger:
             self.app_name_upper = str(app_name).upper()
 
         self.path = destination
-        self.debug = debug
+        self._debug = debug
         self.owner = owner
         self.owner_upper = owner.upper()  # Cache uppercase owner (optimization)
 
@@ -438,6 +438,13 @@ class Logger:
     def info(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
         """Log an informational message (cyan color)."""
         return self.log("INFO", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+
+    def debug(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+        """Log an informational message (cyan color)."""
+        if os.getenv("DEBUG", False):
+            self.log("INFO", message, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+            return True
+        return False
 
     def start(self, message, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
         """Log a start/initialization message (cyan color)."""

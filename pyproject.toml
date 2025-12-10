@@ -1,6 +1,6 @@
 [project]
 name = "steely"
-version = "1.0.0.9"
+version = "1.0.1.2"
 description = "A Python debugging and analysis toolkit with beautiful, colorful terminal output. Provides decorators for automatic logging, execution timing, and real-time variable tracking."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -42,7 +42,9 @@ classifiers = [
     "Typing :: Typed",
     "Environment :: Console"
 ]
-dependencies = []
+dependencies = [
+    "fastapi"
+]
 
 [project.urls]
 Homepage = "https://github.com/tomneto/steely"

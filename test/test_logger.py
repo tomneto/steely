@@ -17,7 +17,7 @@ class TestLoggerInit:
 
         assert logger.app_name_upper == "TEST-APP"
         assert logger.owner == "test-owner"
-        assert logger.debug is True
+        assert logger._debug is True
         assert logger.path is None
 
     def test_logger_with_none_app_name(self):
@@ -36,14 +36,14 @@ class TestLoggerInit:
         """Test Logger with debug=False."""
         logger = Logger("owner", "app", debug=False)
 
-        assert logger.debug is False
+        assert logger._debug is False
         assert logger.environment is None
 
     def test_logger_debug_true_sets_environment(self):
         """Test Logger with debug=True sets environment."""
         logger = Logger("owner", "app", debug=True)
 
-        assert logger.debug is True
+        assert logger._debug is True
         assert logger.environment == "debug"
 
     def test_logger_clean_flag(self):

@@ -15,14 +15,15 @@ Main Features
 Quick Start
 -----------
 >>> from steely import Dan
->>>
+>>> from time import sleep
+...
 >>> @Dan.log
 ... def my_function():
 ...     return "Hello, World!"
 >>>
 >>> @Dan.cronos
 ... def slow_function():
-...     time.sleep(1)
+...     sleep(1)
 ...     return "Done"
 >>>
 >>> @Dan.scan
@@ -38,12 +39,13 @@ MIT License
 """
 
 from steely.cronos import cronos
-from steely.logger import log
+from steely.logger import log, Logger
+from steely.pprint import pprint
 from steely.scan import scan
 
 __version__ = "0.1.0"
 __author__ = "Steely Contributors"
-__all__ = ["Dan", "cronos", "log", "scan"]
+__all__ = ["Dan", "cronos", "log", "scan", "pprint", "Logger"]
 
 
 class Dan:
@@ -73,13 +75,13 @@ class Dan:
 
     >>> @Dan.log
     ... def fetch_data(url):
-    ...     return requests.get(url)
+    ...     return print(url)
 
     Using the cronos decorator for timing:
 
     >>> @Dan.cronos
     ... def compute_heavy_task(data):
-    ...     return process(data)
+    ...     return print(data)
 
     Using the scan decorator for debugging:
 

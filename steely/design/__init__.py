@@ -41,7 +41,18 @@ terminals. On Windows, you may need to enable ANSI support or use a
 compatible terminal emulator.
 """
 
-__all__ = ["UnicodeColors", "TypeColors", "Symbols"]
+__all__ = ["UnicodeColor", "UnicodeColors", "TypeColors", "Symbols"]
+
+
+class UnicodeColor:
+
+    color: str
+
+    def __init__(self, color: str):
+        self.color = color
+
+    def __repr__(self):
+        return str(self.color)
 
 
 class UnicodeColors:
@@ -105,59 +116,59 @@ class UnicodeColors:
     """
 
     # Semantic colors for logging
-    header = '\033[95m'
-    success_blue = '\033[94m'
-    success_cyan = '\033[96m'
-    success = '\033[92m'
-    alert = '\033[93m'
-    fail = '\033[91m'
-    endc = '\033[0m'
-    bold = '\033[1m'
-    underline = '\033[4m'
-    reset = '\033[0m'
-    dim = '\033[2m'
-    italic = '\033[3m'
+    header = UnicodeColor('\033[95m')
+    success_blue = UnicodeColor('\033[94m')
+    success_cyan = UnicodeColor('\033[96m')
+    success = UnicodeColor('\033[92m')
+    alert = UnicodeColor('\033[93m')
+    fail = UnicodeColor('\033[91m')
+    endc = UnicodeColor('\033[0m')
+    bold = UnicodeColor('\033[1m')
+    underline = UnicodeColor('\033[4m')
+    reset = UnicodeColor('\033[0m')
+    dim = UnicodeColor('\033[2m')
+    italic = UnicodeColor('\033[3m')
 
     # Basic Rainbow Colors (Standard 8 colors)
-    black = '\033[30m'
-    red = '\033[31m'
-    green = '\033[32m'
-    yellow = '\033[33m'
-    blue = '\033[34m'
-    purple = '\033[35m'
-    cyan = '\033[36m'
-    white = '\033[37m'
+    black = UnicodeColor('\033[30m')
+    red = UnicodeColor('\033[31m')
+    green = UnicodeColor('\033[32m')
+    yellow = UnicodeColor('\033[33m')
+    blue = UnicodeColor('\033[34m')
+    purple = UnicodeColor('\033[35m')
+    cyan = UnicodeColor('\033[36m')
+    white = UnicodeColor('\033[37m')
 
     # Extended Colors (256-color palette)
-    orange = '\033[38;5;208m'
-    pink = '\033[38;5;206m'
-    teal = '\033[38;5;39m'
-    brown = '\033[38;5;130m'
-    lavender = '\033[38;5;183m'
-    indigo = '\033[38;5;62m'
-    maroon = '\033[38;5;52m'
-    olive = '\033[38;5;100m'
-    steel_blue = '\033[38;5;67m'
+    orange = UnicodeColor('\033[38;5;208m')
+    pink = UnicodeColor('\033[38;5;206m')
+    teal = UnicodeColor('\033[38;5;39m')
+    brown = UnicodeColor('\033[38;5;130m')
+    lavender = UnicodeColor('\033[38;5;183m')
+    indigo = UnicodeColor('\033[38;5;62m')
+    maroon = UnicodeColor('\033[38;5;52m')
+    olive = UnicodeColor('\033[38;5;100m')
+    steel_blue = UnicodeColor('\033[38;5;67m')
 
     # Bright Rainbow Colors (High intensity)
-    bright_black = '\033[90m'
-    bright_red = '\033[91m'
-    bright_green = '\033[92m'
-    bright_yellow = '\033[93m'
-    bright_blue = '\033[94m'
-    bright_purple = '\033[95m'
-    bright_cyan = '\033[96m'
-    bright_white = '\033[97m'
+    bright_black = UnicodeColor('\033[90m')
+    bright_red = UnicodeColor('\033[91m')
+    bright_green = UnicodeColor('\033[92m')
+    bright_yellow = UnicodeColor('\033[93m')
+    bright_blue = UnicodeColor('\033[94m')
+    bright_purple = UnicodeColor('\033[95m')
+    bright_cyan = UnicodeColor('\033[96m')
+    bright_white = UnicodeColor('\033[97m')
 
     # Background Colors
-    bg_black = '\033[40m'
-    bg_red = '\033[41m'
-    bg_green = '\033[42m'
-    bg_yellow = '\033[43m'
-    bg_blue = '\033[44m'
-    bg_purple = '\033[45m'
-    bg_cyan = '\033[46m'
-    bg_white = '\033[47m'
+    bg_black = UnicodeColor('\033[40m')
+    bg_red = UnicodeColor('\033[41m')
+    bg_green = UnicodeColor('\033[42m')
+    bg_yellow = UnicodeColor('\033[43m')
+    bg_blue = UnicodeColor('\033[44m')
+    bg_purple = UnicodeColor('\033[45m')
+    bg_cyan = UnicodeColor('\033[46m')
+    bg_white = UnicodeColor('\033[47m')
 
 
 class TypeColors:

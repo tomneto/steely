@@ -2,7 +2,7 @@ import setuptools
 from setuptools import setup
 
 setup(name='steely',
-      version='1.0.0.9',
+      version='1.0.1.2',
       description='A Python debugging and analysis toolkit with beautiful, colorful terminal output. Provides decorators for automatic logging, execution timing, and real-time variable tracking.',
       url='https://github.com/tomneto',
       author='Steely Tools - Tom Neto',
@@ -11,7 +11,7 @@ setup(name='steely',
       packages=setuptools.find_packages(),
       install_requires=[
           [
-
+            "fastapi"
           ]
       ],
       include_package_data=True,
