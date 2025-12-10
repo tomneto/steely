@@ -19,7 +19,7 @@ Examples
 --------
 Basic usage:
 
->>> from steely.fastapi import postman
+>>> from steely.fastapi import recorder
 >>> from fastapi import FastAPI
 >>>
 >>> app = FastAPI()
@@ -41,7 +41,7 @@ from datetime import datetime
 from functools import wraps
 from typing import Any, Dict, Optional
 
-from fastapi import Request, Response
+from fastapi import Request
 
 __all__ = ["postman", "PostmanRecorder"]
 
@@ -110,9 +110,6 @@ class PostmanRecorder:
         headers: Dict[str, str],
         query_params: Dict[str, Any],
         body: Optional[Any],
-        response_status: int,
-        response_headers: Dict[str, str],
-        response_body: Any,
         path: str
     ):
         """
@@ -130,15 +127,10 @@ class PostmanRecorder:
             Query parameters
         body : any
             Request body
-        response_status : int
-            Response status code
-        response_headers : dict
-            Response headers
-        response_body : any
-            Response body
         path : str
             Endpoint path pattern
         """
+
         # Build Postman request item
         item = {
             "name": f"{method} {path}",
@@ -160,18 +152,7 @@ class PostmanRecorder:
                     ] if query_params else []
                 }
             },
-            "response": [
-                {
-                    "name": f"Example Response ({response_status})",
-                    "status": self._get_status_text(response_status),
-                    "code": response_status,
-                    "header": [
-                        {"key": k, "value": v}
-                        for k, v in response_headers.items()
-                    ],
-                    "body": json.dumps(response_body, indent=2) if response_body is not None else ""
-                }
-            ]
+            "response": []
         }
 
         # Add body if present
@@ -254,32 +235,32 @@ def postman(
     --------
     Basic usage:
 
-    >>> from steely.fastapi import postman
+    >>> from steely.fastapi import recorder
     >>> from fastapi import FastAPI
     >>>
     >>> app = FastAPI()
     >>>
     >>> @app.get("/users/{user_id}")
-    >>> @postman()
+    >>> @recorder.postman()
     >>> async def get_user(user_id: int):
     >>>     return {"user_id": user_id, "name": "John"}
 
     With custom collection name:
 
     >>> @app.post("/users")
-    >>> @postman(collection_name="user_api")
+    >>> @recorder.postman(collection_name="user_api")
     >>> async def create_user(name: str):
     >>>     return {"name": name, "id": 123}
 
     Multiple endpoints in one collection:
 
     >>> @app.get("/users")
-    >>> @postman(collection_name="user_api")
+    >>> @recorder.postman(collection_name="user_api")
     >>> async def list_users():
     >>>     return [{"id": 1, "name": "John"}]
     >>>
     >>> @app.get("/users/{user_id}")
-    >>> @postman(collection_name="user_api")
+    >>> @recorder.postman(collection_name="user_api")
     >>> async def get_user(user_id: int):
     >>>     return {"id": user_id, "name": "John"}
 
@@ -293,11 +274,9 @@ def postman(
     - Works with both sync and async FastAPI endpoints.
     """
     def decorator(func):
-        # Determine collection name
         coll_name = collection_name if collection_name else func.__name__
-        recorder = PostmanRecorder(coll_name, output_dir)
+        recorder: PostmanRecorder = PostmanRecorder(coll_name, output_dir)
 
-        # Get the function signature to check if Request is already a parameter
         sig = inspect.signature(func)
         has_request_param = any(
             param.annotation == Request or param.name == "request"
@@ -307,27 +286,23 @@ def postman(
         if asyncio.iscoroutinefunction(func):
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                # Extract or inject Request object
+
                 request = kwargs.get('request')
                 if request is None:
-                    # Try to find it in args if it's positional
                     for arg in args:
                         if isinstance(arg, Request):
                             request = arg
                             break
 
                 if request is None:
-                    # If Request is not found, we can't record - just execute function
                     return await func(*args, **kwargs)
 
-                # Capture request data
                 method = request.method
                 url = str(request.url)
                 headers = dict(request.headers)
                 query_params = dict(request.query_params)
                 path = request.url.path
 
-                # Try to get body
                 body = None
                 try:
                     content_type = headers.get('content-type', '')
@@ -337,46 +312,26 @@ def postman(
                         body_bytes = await request.body()
                         body = body_bytes.decode('utf-8') if body_bytes else None
                 except (ValueError, UnicodeDecodeError, RuntimeError):
-                    # Body might be already consumed or invalid
                     pass
 
-                # Execute the actual function
-                # Remove request from kwargs if it wasn't in the original signature
                 func_kwargs = kwargs.copy()
                 if not has_request_param and 'request' in func_kwargs:
                     func_kwargs.pop('request')
 
-                response = await func(*args, **func_kwargs)
-
-                # Capture response data
-                response_body = response
-                response_status = 200
-                response_headers = {"content-type": "application/json"}
-
-                # Handle Response objects
-                if isinstance(response, Response):
-                    response_status = response.status_code
-                    response_headers = dict(response.headers)
-                    response_body = response.body
-
-                # Record to Postman collection in background
                 recorder.record_request(
                     method=method,
                     url=url,
                     headers=headers,
                     query_params=query_params,
                     body=body,
-                    response_status=response_status,
-                    response_headers=response_headers,
-                    response_body=response_body,
                     path=path
                 )
 
+                response = await func(*args, **func_kwargs)
+
                 return response
 
-            # Preserve signature but inject Request if not present
             if not has_request_param:
-                # Create new signature with Request parameter
                 params = list(sig.parameters.values())
                 params.append(inspect.Parameter('request', inspect.Parameter.KEYWORD_ONLY, annotation=Request))
                 async_wrapper.__signature__ = sig.replace(parameters=params)
@@ -387,7 +342,6 @@ def postman(
         else:
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
-                # Extract Request object
                 request = kwargs.get('request')
                 if request is None:
                     for arg in args:
@@ -397,60 +351,37 @@ def postman(
 
                 if request is None:
                     return func(*args, **kwargs)
-
-                # Capture request data
                 method = request.method
                 url = str(request.url)
                 headers = dict(request.headers)
                 query_params = dict(request.query_params)
                 path = request.url.path
 
-                # Try to get body (sync version)
                 body = None
                 try:
                     content_type = headers.get('content-type', '')
                     if 'application/json' in content_type:
-                        # For sync, we need to handle this differently
-                        # FastAPI typically uses async for body reading
                         pass
                 except (ValueError, UnicodeDecodeError, RuntimeError):
-                    # Body might be already consumed or invalid
                     pass
 
-                # Execute function
-                # Remove request from kwargs if it wasn't in the original signature
                 func_kwargs = kwargs.copy()
                 if not has_request_param and 'request' in func_kwargs:
                     func_kwargs.pop('request')
 
-                response = func(*args, **func_kwargs)
-
-                # Capture response data
-                response_body = response
-                response_status = 200
-                response_headers = {"content-type": "application/json"}
-
-                if isinstance(response, Response):
-                    response_status = response.status_code
-                    response_headers = dict(response.headers)
-                    response_body = response.body
-
-                # Record to Postman collection
                 recorder.record_request(
                     method=method,
                     url=url,
                     headers=headers,
                     query_params=query_params,
                     body=body,
-                    response_status=response_status,
-                    response_headers=response_headers,
-                    response_body=response_body,
                     path=path
                 )
 
+                response = func(*args, **func_kwargs)
+
                 return response
 
-            # Preserve signature but inject Request if not present
             if not has_request_param:
                 params = list(sig.parameters.values())
                 params.append(inspect.Parameter('request', inspect.Parameter.KEYWORD_ONLY, annotation=Request))

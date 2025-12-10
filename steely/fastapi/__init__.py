@@ -7,11 +7,15 @@ This module provides FastAPI-specific decorators and utilities for the steely to
 Exports
 -------
 postman : decorator
-    Records FastAPI endpoint requests/responses to Postman collections
+    Records FastAPI endpoint requests to Postman collections
 PostmanRecorder : class
-    Handles recording and storage of API requests/responses in Postman format
+    Handles recording and storage of API requests in Postman format
+curl : decorator
+    Records FastAPI endpoint requests as executable curl commands
+CurlRecorder : class
+    Handles recording and storage of API requests as curl shell scripts
 """
 
-from steely.fastapi.recorder import postman, PostmanRecorder
+from steely.fastapi import recorder
 
-__all__ = ["postman", "PostmanRecorder"]
+__all__ = ["recorder"]

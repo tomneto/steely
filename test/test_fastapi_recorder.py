@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from steely.fastapi import postman
+from steely.fastapi import recorder
 
 
 @pytest.fixture
@@ -26,12 +26,12 @@ def app(temp_dir):
     app = FastAPI()
 
     @app.get("/test/{item_id}")
-    @postman(output_dir=temp_dir, collection_name="test_collection")
+    @recorder.postman(output_dir=temp_dir, collection_name="test_collection")
     async def get_item(item_id: int, q: str = None):
         return {"item_id": item_id, "q": q}
 
     @app.post("/test")
-    @postman(output_dir=temp_dir, collection_name="test_collection")
+    @recorder.postman(output_dir=temp_dir, collection_name="test_collection")
     async def create_item(name: str):
         return {"name": name, "id": 123}
 
@@ -67,6 +67,9 @@ def test_postman_decorator_get_request(app, temp_dir):
     assert len(request_item["request"]["url"]["query"]) > 0
     assert request_item["request"]["url"]["query"][0]["key"] == "q"
 
+    # Request-only mode: no response data captured
+    assert request_item["response"] == []
+
 
 def test_postman_decorator_post_request(app, temp_dir):
     """Test that the postman decorator records POST requests."""
@@ -89,6 +92,9 @@ def test_postman_decorator_post_request(app, temp_dir):
     assert "POST" in post_item["name"]
     assert post_item["request"]["method"] == "POST"
 
+    # Request-only mode: no response data captured
+    assert post_item["response"] == []
+
 
 def test_postman_collection_update(app, temp_dir):
     """Test that multiple requests update the same collection."""
@@ -106,13 +112,12 @@ def test_postman_collection_update(app, temp_dir):
     # The endpoint should be recorded once, but with multiple response examples
     get_items = [item for item in collection["item"] if item["request"]["method"] == "GET"]
 
-    # Should have at least one GET item
+    # Should have at least one GET item (modified behavior: request-only mode)
     assert len(get_items) > 0
 
-    # The item should have multiple response examples
-    # Note: Current implementation replaces, but this tests the structure
+    # With request-only mode, response array is always empty
     assert "response" in get_items[0]
-    assert len(get_items[0]["response"]) > 0
+    assert get_items[0]["response"] == []
 
 
 def test_postman_decorator_without_request_param():
@@ -121,7 +126,7 @@ def test_postman_decorator_without_request_param():
         app = FastAPI()
 
         @app.get("/simple")
-        @postman(output_dir=tmpdir)
+        @recorder.postman(output_dir=tmpdir)
         async def simple_endpoint():
             return {"message": "hello"}
 
@@ -134,6 +139,11 @@ def test_postman_decorator_without_request_param():
         # Collection should be created
         collection_path = Path(tmpdir) / "simple_endpoint.json"
         assert collection_path.exists()
+
+        # Verify request-only mode
+        with open(collection_path, 'r') as f:
+            collection = json.load(f)
+        assert collection["item"][0]["response"] == []
 
 
 if __name__ == "__main__":

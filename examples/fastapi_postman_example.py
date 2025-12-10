@@ -18,13 +18,13 @@ The Postman collections will be saved to ./postman_collections/
 
 from fastapi import FastAPI
 
-from steely.fastapi import postman
+from steely.fastapi import recorder
 
 app = FastAPI(title="Postman Recorder Demo")
 
 
 @app.get("/users/{user_id}")
-@postman()
+@recorder.postman()
 async def get_user(user_id: int):
     """
     Get a specific user by ID.
@@ -39,7 +39,7 @@ async def get_user(user_id: int):
 
 
 @app.get("/users")
-@postman(collection_name="user_api")
+@recorder.postman(collection_name="user_api")
 async def list_users(limit: int = 10, offset: int = 0):
     """
     List all users with pagination.
@@ -57,7 +57,7 @@ async def list_users(limit: int = 10, offset: int = 0):
 
 
 @app.post("/users")
-@postman(collection_name="user_api")
+@recorder.postman(collection_name="user_api")
 async def create_user(name: str, email: str):
     """
     Create a new user.
@@ -74,7 +74,7 @@ async def create_user(name: str, email: str):
 
 
 @app.delete("/users/{user_id}")
-@postman(collection_name="user_api")
+@recorder.postman(collection_name="user_api")
 async def delete_user(user_id: int):
     """
     Delete a user.

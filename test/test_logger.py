@@ -164,6 +164,38 @@ class TestLoggerLogMethod:
             import shutil
             shutil.rmtree(expected_dir, ignore_errors=True)
 
+    def test_log_creates_destination_folder(self):
+        """Test that logger creates destination folder if it doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a path to a non-existent subdirectory
+            non_existent_dir = os.path.join(tmpdir, "logs", "app_logs", "nested")
+
+            # Verify the directory doesn't exist yet
+            assert not os.path.exists(non_existent_dir)
+
+            # Create logger with non-existent destination
+            logger = Logger("owner", "app", destination=non_existent_dir, debug=False)
+
+            # Log a message - this should create the directory
+            logger.log("INFO", "Test message in new folder", supress=False, debug=True)
+
+            # Verify the directory was created
+            assert os.path.exists(non_existent_dir)
+
+            # Verify log file was created in the new directory
+            log_files = os.listdir(non_existent_dir)
+            assert len(log_files) == 1
+            assert log_files[0].endswith(".log")
+
+            # Verify the log file contains the message
+            log_file_path = os.path.join(non_existent_dir, log_files[0])
+            with open(log_file_path, 'r') as f:
+                content = f.read()
+                assert "Test message in new folder" in content
+                assert "[APP]" in content
+                assert "[OWNER]" in content
+                assert "[INFO]" in content
+
     def test_log_timestamp_format(self, capsys):
         """Test log includes properly formatted timestamp."""
         logger = Logger("owner", "app")
@@ -223,7 +255,7 @@ class TestLoggerLevelColors:
         logger.log(level, "Message", supress=False, debug=True)
 
         captured = capsys.readouterr()
-        assert expected_color in captured.out
+        assert str(expected_color) in captured.out
 
 
 class TestLoggerCleanFlag:
