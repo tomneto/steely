@@ -10,6 +10,8 @@ Steely provides powerful decorators that help developers understand their code's
 - **Dan.cronos** - Execution time measurement and profiling
 - **Dan.scan** - Real-time variable tracking with type-colored output
 - **Logger** - Flexible, thread-safe logging with color-coded output and file support
+- **pprint** - Pretty print with caller location information for easy debugging
+- **FastAPI Integration** - Record API requests as Postman collections or curl commands
 
 ## Installation
 
@@ -42,6 +44,8 @@ pip install -e .
 
 ```python
 from steely import Dan
+from steely.pprint import pprint
+from steely.logger import Logger
 
 # Log function execution
 @Dan.log
@@ -62,10 +66,41 @@ def calculate(a, b):
     squared = total ** 2
     return squared
 
+# Pretty print with location info
+def debug_function(x, y):
+    result = x + y
+    pprint(f"Result is: {result}")
+    return result
+
+# Set global app name for consistent logging
+Logger.set_global_app_name("MyApp")
+
 # Run the functions
 fetch_data("https://api.example.com")
 slow_operation()
 calculate(3, 4)
+debug_function(10, 20)
+```
+
+### FastAPI Quick Start
+
+```python
+from fastapi import FastAPI
+from steely.fastapi import recorder
+
+app = FastAPI()
+
+# Automatically record requests as Postman collections
+@app.get("/users/{user_id}")
+@recorder.postman()
+async def get_user(user_id: int):
+    return {"user_id": user_id, "name": "John"}
+
+# Also generate curl commands for testing
+@app.post("/users")
+@recorder.curl()
+async def create_user(name: str):
+    return {"id": 123, "name": name}
 ```
 
 ## Decorators
@@ -349,6 +384,33 @@ logger.log("ERROR", "Connection failed")
 logger("WARNING", "This also works!")
 ```
 
+### Setting Global App Name
+
+Use `set_global_app_name()` to set a global application name for all `@log` decorated functions:
+
+```python
+from steely.logger import Logger
+from steely import Dan
+
+# Set global app name once
+Logger.set_global_app_name("MyApp")
+
+# All @log decorated functions will now use "MyApp" instead of module name
+@Dan.log
+def process_data():
+    return "processed"
+
+@Dan.log
+def fetch_api():
+    return "fetched"
+
+# Both functions will log with [MYAPP] prefix
+process_data()  # Logs: [MYAPP] [PROCESS_DATA] [START]: Function Execution Started...
+fetch_api()     # Logs: [MYAPP] [FETCH_API] [START]: Function Execution Started...
+```
+
+This is particularly useful for applications where you want consistent app naming across all logged functions without specifying it for each logger instance.
+
 ### Screen Clearing
 
 Enable screen clearing for a cleaner terminal experience:
@@ -435,6 +497,235 @@ db = DatabaseService()
 db.connect("localhost", 5432)
 db.query("SELECT * FROM users WHERE active = true")
 ```
+
+---
+
+## pprint
+
+The `pprint` function enhances the standard print with automatic caller location information, making debugging faster and more efficient. It shows the file path and line number in a format that's clickable in most IDEs and terminals.
+
+### Basic Usage
+
+```python
+from steely.pprint import pprint
+
+def calculate_total(items):
+    subtotal = sum(items)
+    pprint(f"Subtotal: {subtotal}")
+
+    tax = subtotal * 0.1
+    pprint(f"Tax: {tax}")
+
+    total = subtotal + tax
+    pprint(f"Total: {total}")
+
+    return total
+
+calculate_total([10, 20, 30])
+```
+
+**Output:**
+```
+[PPRINT] File "/path/to/your/script.py", line 4
+Subtotal: 60
+
+[PPRINT] File "/path/to/your/script.py", line 7
+Tax: 6.0
+
+[PPRINT] File "/path/to/your/script.py", line 10
+Total: 66.0
+```
+
+### With Custom Colors
+
+You can customize the color of the output using the `color` parameter:
+
+```python
+from steely.pprint import pprint
+from steely.design import UnicodeColors
+
+# Success message in green
+pprint("Operation completed!", color=UnicodeColors.success)
+
+# Error message in red
+pprint("Something went wrong!", color=UnicodeColors.fail)
+
+# Info message in cyan
+pprint("Processing data...", color=UnicodeColors.success_cyan)
+
+# Warning message in yellow
+pprint("Low memory warning", color=UnicodeColors.alert)
+```
+
+### Clickable Links
+
+The file path and line number are formatted to be clickable in most modern IDEs and terminals:
+- **VS Code**: Ctrl+Click (Cmd+Click on Mac) to jump to the line
+- **PyCharm**: Click the link to navigate to the source
+- **Terminal**: Many terminals support clicking file:line patterns
+
+### Use Cases
+
+Perfect for:
+- **Quick debugging** without setting up a full logger
+- **Tracking execution flow** through complex functions
+- **Comparing values** at different points in code
+- **Temporary debug statements** that are easy to locate and remove later
+
+---
+
+## FastAPI Integration
+
+Steely provides decorators for FastAPI that automatically record your API requests for testing, documentation, and debugging purposes.
+
+### Postman Recorder
+
+The `postman` decorator automatically captures requests and responses, generating Postman Collection v2.1 format files that can be imported directly into Postman.
+
+#### Basic Usage
+
+```python
+from fastapi import FastAPI
+from steely.fastapi import recorder
+
+app = FastAPI()
+
+@app.get("/users/{user_id}")
+@recorder.postman()
+async def get_user(user_id: int):
+    return {"user_id": user_id, "name": "John Doe", "email": "john@example.com"}
+
+@app.post("/users")
+@recorder.postman()
+async def create_user(name: str, email: str):
+    return {"id": 123, "name": name, "email": email}
+```
+
+Collections are saved to `./.postman_collections/<function_name>.json` by default.
+
+#### Grouping Endpoints
+
+Group multiple endpoints into a single collection:
+
+```python
+@app.get("/users")
+@recorder.postman(collection_name="user_api")
+async def list_users():
+    return [{"id": 1, "name": "John"}, {"id": 2, "name": "Jane"}]
+
+@app.get("/users/{user_id}")
+@recorder.postman(collection_name="user_api")
+async def get_user(user_id: int):
+    return {"id": user_id, "name": "John"}
+
+@app.post("/users")
+@recorder.postman(collection_name="user_api")
+async def create_user(name: str):
+    return {"id": 123, "name": name}
+```
+
+All three endpoints will be saved in `./.postman_collections/user_api.json`.
+
+#### Custom Output Directory
+
+```python
+@app.get("/api/data")
+@recorder.postman(output_dir="./docs/postman")
+async def get_data():
+    return {"data": "example"}
+```
+
+### Curl Recorder
+
+The `curl` decorator captures requests and generates executable curl commands, perfect for sharing API examples or creating test scripts.
+
+#### Basic Usage
+
+```python
+from fastapi import FastAPI
+from steely.fastapi import recorder
+
+app = FastAPI()
+
+@app.get("/users/{user_id}")
+@recorder.curl()
+async def get_user(user_id: int, include_email: bool = False):
+    return {"user_id": user_id, "name": "John"}
+
+@app.post("/users")
+@recorder.curl()
+async def create_user(name: str, email: str):
+    return {"id": 123, "name": name, "email": email}
+```
+
+Scripts are saved to `./.curl_scripts/<function_name>.sh` and are automatically made executable.
+
+#### Running Generated Scripts
+
+```bash
+# Execute the generated curl commands
+bash ./.curl_scripts/get_user.sh
+
+# Or make it executable and run directly
+chmod +x ./.curl_scripts/get_user.sh
+./.curl_scripts/get_user.sh
+```
+
+#### Grouping Commands
+
+Group multiple endpoints into a single script:
+
+```python
+@app.get("/users")
+@recorder.curl(script_name="user_api")
+async def list_users():
+    return [{"id": 1, "name": "John"}]
+
+@app.post("/users")
+@recorder.curl(script_name="user_api")
+async def create_user(name: str):
+    return {"id": 123, "name": name}
+```
+
+All commands will be appended to `./.curl_scripts/user_api.sh`.
+
+#### Custom Output Directory
+
+```python
+@app.get("/api/data")
+@recorder.curl(output_dir="./scripts")
+async def get_data():
+    return {"data": "example"}
+```
+
+### Combining Recorders
+
+You can use both decorators together to generate both Postman collections and curl scripts:
+
+```python
+from fastapi import FastAPI
+from steely.fastapi import recorder
+
+app = FastAPI()
+
+@app.get("/users/{user_id}")
+@recorder.postman(collection_name="api_docs")
+@recorder.curl(script_name="api_tests")
+async def get_user(user_id: int):
+    return {"user_id": user_id, "name": "John"}
+```
+
+This will create:
+- `./.postman_collections/api_docs.json` - Postman collection for documentation
+- `./.curl_scripts/api_tests.sh` - Executable curl commands for testing
+
+### Benefits
+
+- **Automatic Documentation**: Generate Postman collections from real API traffic
+- **Testing**: Create reproducible test scripts without manual work
+- **Team Collaboration**: Share API examples with teammates easily
+- **CI/CD Integration**: Use generated curl scripts in your automated tests
+- **Zero Configuration**: Works out of the box with sensible defaults
 
 ---
 
