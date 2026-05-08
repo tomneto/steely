@@ -10,6 +10,8 @@ Steely provides powerful decorators that help developers understand their code's
 - **Dan.cronos** - Execution time measurement and profiling
 - **Dan.scan** - Real-time variable tracking with type-colored output
 - **Logger** - Flexible, thread-safe logging with color-coded output and file support
+- **Logger.getLogger()** - Named logger registry with hierarchical level filtering (compatible with `logging` constants)
+- **Grafana Cloud** - Non-blocking background sink for Grafana Cloud (OTLP) and self-hosted Loki
 - **pprint** - Pretty print with caller location information for easy debugging
 - **FastAPI Integration** - Record API requests as Postman collections or curl commands
 
@@ -38,7 +40,7 @@ pip install -e .
 ## Requirements
 
 - Python 3.9 or higher
-- No external dependencies
+- No required external dependencies (Grafana sink uses only the standard library)
 
 ## Quick Start
 
@@ -411,6 +413,69 @@ fetch_api()     # Logs: [MYAPP] [FETCH_API] [START]: Function Execution Started.
 
 This is particularly useful for applications where you want consistent app naming across all logged functions without specifying it for each logger instance.
 
+### Named Loggers and Level Filtering
+
+Use `Logger.getLogger(name)` to get or create a named logger instance — identical instances are returned for the same name, so it's safe to call from multiple modules.
+
+```python
+import logging  # for the standard numeric constants
+from steely.logger import Logger
+
+# Get-or-create by name (cached)
+log = Logger.getLogger("src.infrastructure")
+log.info("database ready")
+```
+
+#### Filtering by level
+
+```python
+log = Logger.getLogger("src.infrastructure")
+log.setLevel("WARNING")      # string form
+log.setLevel(logging.INFO)   # int form — fully compatible with logging module
+
+log.info("this is filtered out")   # INFO (20) < WARNING (30)
+log.warning("this passes")         # WARNING (30) >= WARNING (30)
+```
+
+Supported level strings and their numeric equivalents:
+
+| String | Numeric | Includes |
+|--------|---------|---------|
+| `"TEST"` / `"TEST-RESULT"` | 10 | test output only |
+| `"INFO"` / `"START"` / `"SUCCESS"` / `"OK"` | 20 | info and above |
+| `"WARNING"` / `"ALERT"` | 30 | warnings and above |
+| `"ERROR"` / `"FAULT"` / `"FAIL"` | 40 | errors and above |
+| `"CRITICAL"` / `"FATAL"` | 50 | critical only |
+
+Pass `None` to clear a level and fall back to parent/global: `log.setLevel(None)`.
+
+#### Hierarchical inheritance
+
+Loggers with dotted names inherit the level of the nearest named ancestor.
+
+```python
+Logger.getLogger("src").setLevel("WARNING")
+
+# "src.db" has no level of its own → inherits "WARNING" from "src"
+Logger.getLogger("src.db").info("filtered")    # suppressed
+Logger.getLogger("src.db").warning("shown")    # passes
+
+# Override for one child only
+Logger.getLogger("src.db").setLevel("INFO")
+Logger.getLogger("src.db").info("now shown")   # passes
+```
+
+#### Global level
+
+Set a baseline level that applies to all loggers without their own (or an ancestor's) level:
+
+```python
+Logger.set_global_level("INFO")     # suppress TEST output globally
+Logger.set_global_level(0)          # reset — log everything (default)
+```
+
+---
+
 ### Screen Clearing
 
 Enable screen clearing for a cleaner terminal experience:
@@ -497,6 +562,91 @@ db = DatabaseService()
 db.connect("localhost", 5432)
 db.query("SELECT * FROM users WHERE active = true")
 ```
+
+---
+
+## Grafana Integration
+
+`GrafanaSink` sends logs to Grafana in the background — batched, non-blocking, and zero-dependency (pure stdlib). It works with both **Grafana Cloud** (via OTLP) and **self-hosted Loki**.
+
+### Grafana Cloud (OTLP)
+
+```python
+from steely import Logger
+
+sink = Logger.set_global_grafana(
+    url="https://otlp-gateway-prod-sa-east-1.grafana.net",
+    labels={"service.name": "my-api", "deployment.environment": "production"},
+    auth=("YOUR_INSTANCE_ID", "YOUR_GRAFANA_API_KEY"),
+)
+
+log = Logger.getLogger("my-api")
+log.info("Server started")
+log.error("Unhandled exception")
+# Logs are queued → batched → sent to Grafana Cloud in the background
+```
+
+Find your instance ID and API key in **Grafana Cloud → My Account → Stack details**.
+
+### Self-hosted Loki
+
+```python
+from steely import Logger
+
+sink = Logger.set_global_grafana(
+    url="http://loki:3100",
+    labels={"app": "my-api", "env": "staging"},
+    protocol="loki",
+)
+```
+
+### Automatic shutdown
+
+The sink registers an `atexit` handler — no need to call `flush()` or `close()` manually. All pending logs are flushed when the process exits (scripts, uvicorn graceful shutdown, etc.).
+
+```python
+# Manual control is available if needed:
+sink.flush()   # drain queue and send immediately
+sink.close()   # stop worker thread, then flush
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `url` | — | Base URL of the target endpoint |
+| `labels` | `{}` | Static metadata attached to every batch |
+| `protocol` | `"otlp"` | `"otlp"` for Grafana Cloud, `"loki"` for self-hosted |
+| `auth` | `None` | `(instance_id, api_key)` tuple for Basic Auth |
+| `token` | `None` | Bearer token (alternative to `auth`) |
+| `batch_size` | `50` | Max log records per HTTP request |
+| `flush_interval` | `5.0` | Max seconds between automatic flushes |
+| `timeout` | `3` | HTTP request timeout in seconds |
+| `max_queue_size` | `10_000` | Max buffered records when Grafana is unreachable |
+| `debug` | `False` | Print HTTP status/errors to stderr |
+
+### FastAPI example
+
+```python
+from fastapi import FastAPI
+from steely import Logger
+
+app = FastAPI()
+
+Logger.set_global_grafana(
+    url="https://otlp-gateway-prod-sa-east-1.grafana.net",
+    labels={"service.name": "my-api"},
+    auth=("1234567", "glc_eyJ..."),
+)
+log = Logger.getLogger("my-api")
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: int):
+    log.info(f"Fetching user {user_id}")
+    return {"user_id": user_id}
+```
+
+No extra configuration needed — the `atexit` handler flushes on uvicorn shutdown.
 
 ---
 

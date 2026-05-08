@@ -121,6 +121,15 @@ Valid values are: INFO, START, WARNING, ALERT, SUCCESS, OK,
 CRITICAL, ERROR, FAULT, FAIL, FATAL, TEST-RESULT, TEST.
 """
 
+# Numeric severity — compatible with Python's logging module constants
+_LEVEL_NUMERIC = {
+    "TEST": 10, "TEST-RESULT": 10,
+    "INFO": 20, "START": 20, "SUCCESS": 20, "OK": 20,
+    "WARNING": 30, "ALERT": 30,
+    "ERROR": 40, "FAULT": 40, "FAIL": 40,
+    "CRITICAL": 50, "FATAL": 50,
+}
+
 # Color mapping for log levels (optimization)
 _COLOR_MAP = {
     'INFO': UnicodeColors.success_cyan,
@@ -227,6 +236,9 @@ class Logger:
     log_path = None
     _global_app_name = None
     _global_destination = None
+    _global_grafana = None
+    _registry: dict = {}
+    _global_level: int = 0  # 0 = log everything
 
     def __init__(self, owner: str, app_name: str = None, destination: str = None, debug: bool = True, clean: bool = False, callback: callable = None, **kwargs):
 
@@ -253,6 +265,7 @@ class Logger:
             self.environment = "debug"
 
         self.callback = callback
+        self._level = None  # None = inherit from hierarchy or global
 
         # Performance optimizations: cache log path and file handle
         self._cached_log_path = None
@@ -360,6 +373,9 @@ class Logger:
         or the level-specific methods (info, warning, error, etc.) instead.
         """
 
+        if _LEVEL_NUMERIC.get(level.upper(), 20) < self._get_effective_level():
+            return None
+
         if args:
             try:
                 message = message % args
@@ -444,6 +460,17 @@ class Logger:
 
         if self.callback is not None:
             self.callback(
+                level=level,
+                message=message,
+                app_name=_current_app,
+                owner=owner,
+                timestamp=timestamp,
+                content=content,
+                **{**self.kwargs, **kwargs},
+            )
+
+        if self._global_grafana is not None:
+            self._global_grafana(
                 level=level,
                 message=message,
                 app_name=_current_app,
@@ -539,6 +566,99 @@ class Logger:
         """
         self.app_name_upper = str(app_name).upper() if app_name is not None else None
 
+    def setLevel(self, level):
+        """
+        Set the minimum log level for this logger instance.
+
+        Accepts Python's standard logging constants (``logging.INFO``,
+        ``logging.WARNING``, etc.) or Steely level strings (``"INFO"``,
+        ``"WARNING"``, etc.).
+
+        Parameters
+        ----------
+        level : int or str
+            Minimum level to log. Messages below this level are silently
+            dropped. Pass ``None`` to clear the instance level and inherit
+            from the hierarchy.
+
+        Examples
+        --------
+        >>> import logging
+        >>> Logger.getLogger("src.infra").setLevel(logging.INFO)   # int
+        >>> Logger.getLogger("src.app").setLevel("WARNING")        # string
+        >>> Logger.getLogger("src.app").setLevel(None)             # inherit
+        """
+        if level is None:
+            self._level = None
+        elif isinstance(level, str):
+            self._level = _LEVEL_NUMERIC.get(level.upper(), 0)
+        else:
+            self._level = int(level)
+
+    def _get_effective_level(self) -> int:
+        """Return the effective numeric level, walking up the dotted hierarchy."""
+        if self._level is not None:
+            return self._level
+        name = self.owner
+        while '.' in name:
+            name = name.rsplit('.', 1)[0]
+            parent = self._registry.get(name)
+            if parent is not None and parent._level is not None:
+                return parent._level
+        return self._global_level
+
+    @classmethod
+    def getLogger(cls, name: str) -> "Logger":
+        """
+        Return a cached Logger for the given name, creating it if needed.
+
+        Names can be dotted paths (e.g. ``"src.infrastructure"``).  A logger
+        with no explicit level inherits from its closest ancestor that has a
+        level set, or from the global level.
+
+        Parameters
+        ----------
+        name : str
+            Logger name / owner. Dotted names form a hierarchy.
+
+        Returns
+        -------
+        Logger
+            Cached Logger instance for ``name``.
+
+        Examples
+        --------
+        >>> import logging
+        >>> Logger.getLogger("src").setLevel(logging.WARNING)
+        >>> log = Logger.getLogger("src.infrastructure")  # inherits WARNING
+        >>> log.info("quiet")    # filtered
+        >>> log.error("loud")    # shown
+        """
+        if name not in cls._registry:
+            cls._registry[name] = cls(owner=name)
+        return cls._registry[name]
+
+    @classmethod
+    def set_global_level(cls, level):
+        """
+        Set the minimum log level for all loggers that have no explicit level.
+
+        Parameters
+        ----------
+        level : int or str
+            Minimum level. ``0`` (default) logs everything.
+
+        Examples
+        --------
+        >>> Logger.set_global_level("INFO")      # suppress TEST globally
+        >>> Logger.set_global_level(logging.WARNING)
+        >>> Logger.set_global_level(0)           # reset — log everything
+        """
+        if isinstance(level, str):
+            cls._global_level = _LEVEL_NUMERIC.get(level.upper(), 0)
+        else:
+            cls._global_level = int(level)
+
     @classmethod
     def set_global_app_name(cls, app_name: str):
         """
@@ -586,6 +706,101 @@ class Logger:
         >>> logger3 = Logger("module3", destination="/tmp/logs")  # Explicit destination overrides global
         """
         cls._global_destination = destination
+
+    @classmethod
+    def set_global_grafana(
+        cls,
+        url: str,
+        labels: dict = None,
+        batch_size: int = 50,
+        flush_interval: float = 5.0,
+        timeout: int = 3,
+        auth: tuple = None,
+        token: str = None,
+        protocol: str = "otlp",
+        debug: bool = False,
+        max_queue_size: int = 10_000,
+    ):
+        """
+        Configure a global Grafana sink for all Logger instances.
+
+        Once set, every log call from any Logger instance will enqueue an entry
+        to be sent to Grafana in a background batch — with zero blocking.
+
+        Parameters
+        ----------
+        url : str
+            Base URL of the Grafana endpoint.
+            Grafana Cloud (OTLP): ``"https://otlp-gateway-prod-sa-east-1.grafana.net"``
+            Self-hosted Loki:     ``"http://loki:3100"``
+        labels : dict, optional
+            OTLP: ``resource.attributes`` (e.g. ``{"service.name": "my-api"}``).
+            Loki: stream labels (keep cardinality low).
+        batch_size : int, optional
+            Max entries per HTTP push request. Default 50.
+        flush_interval : float, optional
+            Max seconds between flushes. Default 5.0.
+        timeout : int, optional
+            HTTP request timeout in seconds. Default 3.
+        auth : tuple, optional
+            ``(username, password)`` for Basic Auth.
+            Grafana Cloud: ``(instance_id, api_key)``.
+        token : str, optional
+            Bearer token (alternative to ``auth``).
+        protocol : str, optional
+            ``"otlp"`` (default, Grafana Cloud) or ``"loki"`` (self-hosted).
+
+        Returns
+        -------
+        GrafanaSink
+            The sink instance, so callers can call ``sink.flush()`` / ``sink.close()``.
+
+        Examples
+        --------
+        Grafana Cloud:
+
+        >>> sink = Logger.set_global_grafana(
+        ...     url="https://otlp-gateway-prod-sa-east-1.grafana.net",
+        ...     labels={"service.name": "my-api", "deployment.environment": "prod"},
+        ...     auth=("1628732", "glc_eyJ..."),
+        ... )
+
+        Self-hosted Loki:
+
+        >>> sink = Logger.set_global_grafana(
+        ...     url="http://loki:3100",
+        ...     labels={"app": "my-api"},
+        ...     protocol="loki",
+        ... )
+
+        FastAPI (single worker — call anywhere):
+
+        >>> sink = Logger.set_global_grafana(url=..., auth=(...))
+        >>> app = FastAPI()
+
+        FastAPI (``uvicorn --workers N``) — call inside lifespan, after fork:
+
+        >>> from contextlib import asynccontextmanager
+        >>> @asynccontextmanager
+        ... async def lifespan(app):
+        ...     Logger.set_global_grafana(url=..., auth=(...))
+        ...     yield
+        >>> app = FastAPI(lifespan=lifespan)
+        """
+        from steely.grafana import GrafanaSink
+        cls._global_grafana = GrafanaSink(
+            url=url,
+            labels=labels,
+            batch_size=batch_size,
+            flush_interval=flush_interval,
+            timeout=timeout,
+            auth=auth,
+            token=token,
+            protocol=protocol,
+            debug=debug,
+            max_queue_size=max_queue_size,
+        )
+        return cls._global_grafana
 
 
 def log(func):

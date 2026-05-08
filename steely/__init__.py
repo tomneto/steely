@@ -39,13 +39,14 @@ MIT License
 """
 
 from steely.cronos import cronos
+from steely.grafana import GrafanaSink
 from steely.logger import log, Logger
 from steely.pprint import pprint
 from steely.scan import scan
 
 __version__ = "0.1.0"
 __author__ = "Steely Contributors"
-__all__ = ["Dan", "cronos", "log", "scan", "pprint", "Logger"]
+__all__ = ["Dan", "cronos", "log", "scan", "pprint", "Logger", "GrafanaSink"]
 
 
 class Dan:

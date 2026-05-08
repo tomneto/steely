@@ -1,15 +1,24 @@
+import os
 from steely import Logger
 
-# Set global destination BEFORE creating logger instance
-Logger.set_global_destination("./logs")
+GRAFANA_URL = os.getenv("GRAFANA_URL")
+GRAFANA_INSTANCE_ID = os.getenv("GRAFANA_INSTANCE_ID")
+GRAFANA_TOKEN = os.getenv("GRAFANA_TOKEN")
 
-def save_function(*args, **kwargs):
-    print(args, kwargs)
+sink = Logger.set_global_grafana(
+    url=GRAFANA_URL,
+    labels={"service.name": "steely", "deployment.environment": "dev"},
+    auth=(GRAFANA_INSTANCE_ID, GRAFANA_TOKEN),
+    protocol="otlp",
+    debug=True,
+)
 
-
-# Now create the logger - it will use the global destination
-log = Logger('test', callback=save_function)
+log = Logger('test')
 
 log.info("Hello world")
-log.info("Hello world")
-log.info("Hello world")
+log.warning("Something to watch")
+log.error("Something went wrong")
+
+#sink.flush()  # garante envio antes do processo terminar
+#sink.close()
+
