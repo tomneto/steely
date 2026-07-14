@@ -1,6 +1,6 @@
 [project]
 name = "steely"
-version = "1.0.2.1"
+version = "1.0.2.2"
 description = "A Python debugging and analysis toolkit with beautiful, colorful terminal output. Provides decorators for automatic logging, execution timing, and real-time variable tracking."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -47,6 +47,12 @@ dependencies = [
     "twine>=6.2.0",
 ]
 
+[project.optional-dependencies]
+# HTTP email providers (Resend, generic HTTPAPIProvider) need httpx.
+# SMTP works with the standard library alone and needs no extra.
+#   pip install "steely[http]"
+http = ["httpx>=0.27"]
+
 [project.urls]
 Homepage = "https://github.com/tomneto/steely"
 Documentation = "https://github.com/tomneto/steely#readme"
@@ -59,7 +65,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["steely"]
-
-[pypi]
-username = "__token__"
-password = "pypi-AgEIcHlwaS5vcmcCJDhhMDFhZTQ2LTE1MGQtNDQ1ZC05NTI2LTY3Y2NjZGYzZTgxZgACDlsxLFsic3RlZWx5Il1dAAIsWzIsWyI5NjUwMTQ2NC01OTQ1LTRlYWMtODQzOS05NmE4MTcyYTY0YWYiXV0AAAYgfuN0NpKXKEi7J7_eq0UCXVnQ_cWHe7DSUBJOkNJFBWE"

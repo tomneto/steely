@@ -12,6 +12,7 @@ Steely provides powerful decorators that help developers understand their code's
 - **Logger** - Flexible, thread-safe logging with color-coded output and file support
 - **Logger.getLogger()** - Named logger registry with hierarchical level filtering (compatible with `logging` constants)
 - **Grafana Cloud** - Non-blocking background sink for Grafana Cloud (OTLP) and self-hosted Loki
+- **Email Providers** - Send email over SMTP or HTTP APIs (Resend, Mailchimp/SendGrid/… via a generic provider) behind one interface
 - **pprint** - Pretty print with caller location information for easy debugging
 - **FastAPI Integration** - Record API requests as Postman collections or curl commands
 
@@ -647,6 +648,84 @@ async def get_user(user_id: int):
 ```
 
 No extra configuration needed — the `atexit` handler flushes on uvicorn shutdown.
+
+---
+
+## Email Providers
+
+`steely.email` sends email over **SMTP** or an **HTTP API** (Resend, or any REST API via a generic provider) behind one provider-agnostic interface. Switch providers with a one-line change — the message you build and the result you get back are identical.
+
+> Full integration guide (recommended for anyone — human or agent — wiring email into a project): **[`EMAIL_PROVIDERS.md`](EMAIL_PROVIDERS.md)**.
+
+### Install
+
+```bash
+pip install steely            # SMTP only (pure stdlib, no extra deps)
+pip install "steely[http]"    # + Resend / generic HTTP API providers (installs httpx)
+```
+
+### SMTP (no extra install)
+
+```python
+from steely.email import EmailClient, EmailMessage
+
+client = EmailClient(
+    "smtp",
+    server="smtp.hostinger.com", port=587,
+    username="noreply@acme.com", password="…",
+)
+result = client.send(EmailMessage(
+    to=["dest@example.com"],
+    subject="Welcome",
+    body_html="<h1>Hi</h1>",
+    body_text="Hi",           # optional plain-text fallback
+))
+print(result.success, result.message_id)
+```
+
+### Resend (needs `steely[http]`)
+
+```python
+client = EmailClient("resend", api_key="re_xxx", from_email="noreply@acme.com")
+result = client.send(EmailMessage(to=["dest@example.com"], subject="Hi", body_html="<p>Hi</p>"))
+```
+
+### Generic HTTP API — Mailchimp / SendGrid / Mailgun / … (needs `steely[http]`)
+
+```python
+client = EmailClient(
+    "api",
+    endpoint_url="https://api.vendor.com/v1/send",
+    api_key="…",
+    from_email="noreply@acme.com",
+    # request_body=callable_or_dict   # customise the payload for the vendor
+)
+```
+
+### The result
+
+`client.send(...)` **always returns an `EmailResult`** and never raises on a rejected send:
+
+```python
+result.success        # bool
+result.message        # human-readable status/error (never contains secrets)
+result.provider       # "smtp" | "resend" | "api"
+result.message_id     # provider id when available
+result.status_code    # HTTP status for API providers; None for SMTP
+result.as_tuple()     # (success, message, message_id)
+```
+
+### Parameters (common)
+
+| Provider | Key parameters |
+|----------|----------------|
+| `"smtp"` | `server`, `port`, `username`, `password`, `use_tls=True`, `timeout=30`, `from_email` |
+| `"resend"` | `api_key`, `from_email`, `timeout=30`, `max_attempts=3` |
+| `"api"` / `"http"` | `endpoint_url`, `api_key`, `from_email`, `request_body`, `auth_header`, `auth_scheme`, `max_attempts=3` |
+
+### Legacy `steely.smtp.SendEmail`
+
+The older `from steely.smtp import SendEmail` API is preserved unchanged (it now delegates to `SMTPProvider` internally). New code should prefer `EmailClient` / `EmailMessage`. See [`EMAIL_PROVIDERS.md`](EMAIL_PROVIDERS.md) for details.
 
 ---
 

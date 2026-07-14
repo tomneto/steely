@@ -39,14 +39,26 @@ MIT License
 """
 
 from steely.cronos import cronos
+from steely.email import EmailClient, EmailMessage, EmailResult
 from steely.grafana import GrafanaSink
 from steely.logger import log, Logger
 from steely.pprint import pprint
 from steely.scan import scan
 
-__version__ = "0.1.0"
+__version__ = "1.0.2.2"
 __author__ = "Steely Contributors"
-__all__ = ["Dan", "cronos", "log", "scan", "pprint", "Logger", "GrafanaSink"]
+__all__ = [
+    "Dan",
+    "cronos",
+    "log",
+    "scan",
+    "pprint",
+    "Logger",
+    "GrafanaSink",
+    "EmailClient",
+    "EmailMessage",
+    "EmailResult",
+]
 
 
 class Dan:
