@@ -158,12 +158,15 @@ class Logger:
 
     Parameters
     ----------
-    app_name : str
-        The application name displayed in log messages. Will be converted
-        to uppercase. If None, defaults to 'YOUR-APP-NAME-GOES-HERE'.
     owner : str
         The owner/component name displayed in log messages (e.g., function
-        name, module name). Will be converted to uppercase.
+        name, module name, subsystem). First positional argument. Will be
+        converted to uppercase.
+    app_name : str, optional
+        The application name displayed before the owner in log messages. Will
+        be converted to uppercase. If None (default), no app-name segment is
+        shown — or the global app name set via
+        :meth:`set_global_app_name` is used when present.
     destination : str, optional
         Directory path for file logging. If provided, logs will be written
         to date-stamped files (DD-MM-YYYY.log) in this directory.
@@ -174,9 +177,14 @@ class Logger:
     clean : bool, optional
         Enable persistent screen clearing. When True, clears the screen
         before each log message. Default is False.
+    callback : callable, optional
+        A function invoked for every emitted record, in addition to the
+        console/file output. Receives the level, message, app name, owner,
+        timestamp and rendered content — the same hook the global Grafana
+        sink uses. Default is None.
     **kwargs
-        Additional keyword arguments that will be included as tags in
-        each log message.
+        Additional keyword arguments that will be included as bracketed tags
+        in each log message.
 
     Attributes
     ----------
