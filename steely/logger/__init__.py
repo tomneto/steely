@@ -247,6 +247,9 @@ class Logger:
     _global_grafana = None
     _registry: dict = {}
     _global_level: int = 0  # 0 = log everything
+    _stdlib_handler = None
+    _stdlib_root_intercepted: bool = False
+    _intercepted_stdlib_loggers: set = set()
 
     def __init__(self, owner: str, app_name: str = None, destination: str = None, debug: bool = True, clean: bool = False, callback: callable = None, **kwargs):
 
@@ -809,6 +812,57 @@ class Logger:
             max_queue_size=max_queue_size,
         )
         return cls._global_grafana
+
+    @classmethod
+    def intercept_stdlib(cls, logger_names=None, app_name=None):
+        """
+        Intercept standard-library loggers and route them through Steely.
+
+        Any library that uses ``logging.getLogger(...)`` (e.g. uvicorn,
+        SQLAlchemy, httpx) will have its output captured, reformatted,
+        and emitted through :meth:`Logger.getLogger` — with the same
+        colour, tagging, file output and Grafana shipping that Steely
+        provides.
+
+        Parameters
+        ----------
+        logger_names : list of str, optional
+            Specific logger names to intercept (e.g. ``["uvicorn",
+            "uvicorn.error"]``).  When *None* (default) the **root**
+            logger is intercepted, which catches **every** stdlib log
+            message.
+        app_name : str, optional
+            Application name to use for intercepted logs.  When *None*
+            the value set via :meth:`set_global_app_name` is used.  At
+            least one must be set or a ``ValueError`` is raised.
+
+        Raises
+        ------
+        ValueError
+            If neither *app_name* nor :attr:`_global_app_name` is set.
+
+        Notes
+        -----
+        - Idempotent — calling this method multiple times does **not**
+          duplicate handlers or log lines.
+        - Named loggers have ``propagate=False`` to prevent double
+          emission through parent / root loggers.
+        - Existing handlers on the targeted loggers are removed.
+
+        Examples
+        --------
+        Intercept all stdlib logs via the root logger:
+
+        >>> Logger.set_global_app_name("MyAPI")
+        >>> Logger.intercept_stdlib()
+
+        Intercept specific third-party loggers:
+
+        >>> Logger.intercept_stdlib(["uvicorn", "uvicorn.error",
+        ...                          "uvicorn.access"])
+        """
+        from steely.logger._stdlib_bridge import intercept_stdlib as _impl
+        return _impl(logger_names=logger_names, app_name=app_name)
 
 
 def log(func):

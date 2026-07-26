@@ -515,6 +515,76 @@ Logger.set_global_level(0)          # reset — log everything (default)
 
 ---
 
+### Intercepting Standard Library Logging
+
+Any library that uses Python's standard ``logging.getLogger(...)`` — **uvicorn**, **SQLAlchemy**, **httpx**, **requests**, **urllib3**, etc. — can have its output captured, re-formatted and routed through Steely's ``Logger`` with a single call. No changes needed in the third-party library.
+
+#### Quick Start — Uvicorn
+
+```python
+from steely.logger import Logger
+
+Logger.set_global_app_name("MyAPI")
+
+# Intercept specific loggers
+Logger.intercept_stdlib(["uvicorn", "uvicorn.error", "uvicorn.access"])
+
+# Or intercept everything at once (root logger):
+Logger.intercept_stdlib()
+```
+
+After the call, every log line from those libraries is displayed with Steely's colouring, file/destination output, and Grafana shipping — exactly as if it were a native ``Logger`` call.
+
+#### Level mapping
+
+| stdlib constant | stdlib value | Steely level |
+|----------------|--------------|--------------|
+| ``NOTSET``     | 0            | ``TEST``     |
+| ``DEBUG``      | 10           | ``TEST``     |
+| ``INFO``       | 20           | ``INFO``     |
+| ``WARNING``    | 30           | ``WARNING``  |
+| ``ERROR``      | 40           | ``ERROR``    |
+| ``CRITICAL``   | 50           | ``CRITICAL`` |
+
+#### How it works
+
+- **``app_name``** is required. Set it globally via ``Logger.set_global_app_name("MyAPI")`` or pass it directly: ``Logger.intercept_stdlib(app_name="MyAPI")``. If neither is provided, ``intercept_stdlib`` raises a clear ``ValueError``.
+- **``owner``** is inferred dynamically from ``LogRecord.name`` (e.g. ``"uvicorn.error"`` becomes the Steely owner ``UVICORN.ERROR``). If the logger is the root logger (no name), the fallback is ``record.module``.
+- **Caller context** is appended as tags: ``file`` (pathname), ``line`` (line number), ``func`` (function name). These appear in the output as ``[.../path/to/file.py] [42] [FUNC_NAME]``, consistent with Steely's existing tag system.
+- **Exceptions** are fully captured — when a ``LogRecord`` carries ``exc_info``, the full traceback is formatted and appended to the message.
+
+#### Filtering by level
+
+Because intercepted logs pass through ``Logger.getLogger(owner)``, you can use ``setLevel()`` and hierarchical inheritance on them:
+
+```python
+Logger.set_global_app_name("MyAPI")
+
+# Intercept uvicorn
+Logger.intercept_stdlib(["uvicorn", "uvicorn.error"])
+
+# Suppress uvicorn.access without filtering the others
+Logger.getLogger("uvicorn.access").setLevel("WARNING")
+
+# Or raise the bar for the whole uvicorn family
+Logger.getLogger("uvicorn").setLevel("ERROR")   # children inherit
+```
+
+#### Scoping
+
+| Call | Catches |
+|------|---------|
+| ``Logger.intercept_stdlib()`` | **Everything** — every stdlib log message (root logger). |
+| ``Logger.intercept_stdlib(["uvicorn"])`` | Only the named loggers and their children (via propagation). |
+
+The root-logger approach is simpler but captures *all* third-party output. The named-logger approach is more selective; each named logger gets ``propagate=False`` to avoid double emission.
+
+#### Idempotency
+
+Calling ``intercept_stdlib`` multiple times is safe — handlers are never duplicated. If you call it once with root and again with a named list, the named loggers also get ``propagate=False`` so no line appears twice.
+
+---
+
 ### Screen Clearing
 
 Enable screen clearing for a cleaner terminal experience:
