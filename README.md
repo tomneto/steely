@@ -13,8 +13,21 @@ Steely provides powerful decorators that help developers understand their code's
 - **Logger.getLogger()** - Named logger registry with hierarchical level filtering (compatible with `logging` constants)
 - **Grafana Cloud** - Non-blocking background sink for Grafana Cloud (OTLP) and self-hosted Loki
 - **Email Providers** - Send email over SMTP or HTTP APIs (Resend, Mailchimp/SendGrid/… via a generic provider) behind one interface
+- **Streaming STT** - Speech-to-text over Deepgram, AssemblyAI, Google/Chirp, Azure, Amazon Transcribe, or self-hosted WhisperLive behind one async interface
 - **pprint** - Pretty print with caller location information for easy debugging
 - **FastAPI Integration** - Record API requests as Postman collections or curl commands
+
+Everything above ships in a single package. The core (decorators, `Logger`, `Grafana` sink, SMTP email) has **no required third-party dependencies** — it runs on the standard library. HTTP email and each STT backend are opt-in [extras](#installation) so you only install what you use.
+
+## Table of Contents
+
+- [Installation](#installation) · [Requirements](#requirements) · [Quick Start](#quick-start)
+- [Decorators](#decorators): [`Dan.log`](#danlog) · [`Dan.cronos`](#dancronos) · [`Dan.scan`](#danscan)
+- [Logger](#logger) · [Grafana Integration](#grafana-integration)
+- [Email Providers](#email-providers) · [Streaming STT](#streaming-stt)
+- [pprint](#pprint) · [FastAPI Integration](#fastapi-integration)
+- [Advanced Usage](#advanced-usage) · [Framework Compatibility](#framework-compatibility)
+- Deep-dive guides: [`EMAIL_PROVIDERS.md`](EMAIL_PROVIDERS.md) · [`STT_PROVIDERS.md`](STT_PROVIDERS.md) · [`CHANGELOG.md`](CHANGELOG.md)
 
 ## Installation
 
@@ -38,10 +51,35 @@ cd steely
 pip install -e .
 ```
 
+### Optional extras
+
+The core is dependency-light; each integration that needs a third-party SDK is an
+opt-in extra. Install only what you use:
+
+| Extra | Install | Enables |
+|-------|---------|---------|
+| *(none)* | `pip install steely` | Decorators, `Logger`, Grafana sink, **SMTP** email |
+| `http` | `pip install "steely[http]"` | Resend + generic HTTP-API email providers (`httpx`) |
+| `stt-deepgram` | `pip install "steely[stt-deepgram]"` | Deepgram streaming STT |
+| `stt-assemblyai` | `pip install "steely[stt-assemblyai]"` | AssemblyAI streaming STT |
+| `stt-google` | `pip install "steely[stt-google]"` | Google Cloud / Chirp streaming STT |
+| `stt-azure` | `pip install "steely[stt-azure]"` | Azure AI Speech streaming STT |
+| `stt-aws` | `pip install "steely[stt-aws]"` | Amazon Transcribe streaming STT |
+| `stt-whisperlive` | `pip install "steely[stt-whisperlive]"` | Self-hosted WhisperLive (`websockets`) |
+| `audio` | `pip install "steely[audio]"` | Audio resampling back-port for Python 3.13+ |
+| `stt-all` | `pip install "steely[stt-all]"` | Every STT backend |
+| `all` | `pip install "steely[all]"` | Every optional integration |
+
+Each backend's SDK is imported **lazily**, so `import steely.stt` (or `steely.email`)
+never fails when an extra is absent — only *constructing* a provider you haven't
+installed raises a loud, explicit error at construction time.
+
 ## Requirements
 
 - Python 3.9 or higher
-- No required external dependencies (Grafana sink uses only the standard library)
+- **No required third-party dependencies** for the core — decorators, `Logger`, the
+  Grafana sink and SMTP email all run on the standard library alone. HTTP email and
+  the STT backends pull their SDKs only when you install the matching [extra](#optional-extras).
 
 ## Quick Start
 
@@ -726,6 +764,135 @@ result.as_tuple()     # (success, message, message_id)
 ### Legacy `steely.smtp.SendEmail`
 
 The older `from steely.smtp import SendEmail` API is preserved unchanged (it now delegates to `SMTPProvider` internally). New code should prefer `EmailClient` / `EmailMessage`. See [`EMAIL_PROVIDERS.md`](EMAIL_PROVIDERS.md) for details.
+
+---
+
+## Streaming STT
+
+`steely.stt` streams audio to **Deepgram**, **AssemblyAI**, **Google Cloud / Chirp**, **Azure AI Speech**, **Amazon Transcribe**, or self-hosted **WhisperLive** behind one small, async, provider-agnostic interface. You push raw audio frames and consume a uniform stream of transcript events — switching providers is a one-line change.
+
+> Full integration guide (auth per provider, language codes, sample rates, reconnection, adding a backend): **[`STT_PROVIDERS.md`](STT_PROVIDERS.md)**. Read it before wiring STT into a worker.
+
+### Install
+
+```bash
+pip install steely                     # core steely.stt — NO new deps (stdlib asyncio)
+pip install "steely[stt-deepgram]"     # + Deepgram SDK
+pip install "steely[stt-assemblyai]"   # + AssemblyAI SDK
+pip install "steely[stt-google]"       # + Google Cloud Speech SDK
+pip install "steely[stt-azure]"        # + Azure Speech SDK
+pip install "steely[stt-aws]"          # + Amazon Transcribe streaming SDK
+pip install "steely[stt-whisperlive]"  # + WhisperLive client (websockets)
+pip install "steely[stt-all]"          # + all backends
+```
+
+Each backend's SDK is imported **lazily** inside its provider's constructor, so `import steely.stt` never fails when an SDK is absent — only *constructing* that provider does, raising `ProviderNotAvailableError` (loud, at construction time, never a silent failure mid-stream).
+
+> On **Python 3.13+**, `audioop` (used for resampling) was removed from the stdlib; add the `audio` extra: `pip install "steely[audio]"`.
+
+### The 30-second version
+
+```python
+import asyncio
+from steely.stt import STTClient, STTConfig
+
+async def main():
+    # 1) Pick a provider by name (+ its config). Or pass a provider instance.
+    client = STTClient("deepgram", api_key="dg_xxx")
+
+    # 2) Describe the frames you WILL push (this is the INPUT format, not the backend's).
+    config = STTConfig(language="pt-BR", sample_rate=48000, channels=1)
+
+    # 3) Open a session, push raw frames, iterate canonical events.
+    session = await client.open_session(config)
+    async with session:
+        async for frame in livekit_audio():                 # your frame source
+            await session.push_frame(frame.data.tobytes())  # RAW bytes — adapter resamples
+        await session.end_input()
+        async for event in session:                         # interim... final
+            print(event.type.value, event.text, event.start, event.end)
+
+asyncio.run(main())
+```
+
+To use a different backend, change **only** step 1 — everything else stays identical:
+
+```python
+client = STTClient("assemblyai", api_key="aai_xxx")
+client = STTClient("google")                                    # GOOGLE_APPLICATION_CREDENTIALS from env
+client = STTClient("azure", subscription_key="…", region="…")
+client = STTClient("aws", region="us-east-1")
+client = STTClient("whisperlive", endpoint_url="ws://my-host:9090")
+```
+
+### Core types
+
+| Type | What it is |
+|------|------------|
+| `STTClient` | Front door. `STTClient(provider_name, **creds)` or `STTClient(provider_instance)`. |
+| `STTConfig` | Session config describing the **input** you push: `model`, `language` (BCP-47), `sample_rate`, `encoding`, `channels`, `interim_results`. |
+| `STTSession` | A live session: `await push_frame(bytes)`, `await end_input()`, `await aclose()`. Also an **async iterator** of events and an **async context manager**. |
+| `STTEvent` | The single canonical event: `type` (`interim`/`final`), `text`, `start`/`end` (**int milliseconds**), optional `speaker`, `confidence`, `language`; `.is_final` helper. |
+| `EventType` | `EventType.INTERIM` \| `EventType.FINAL`. |
+| `ReconnectPolicy` | Reconnection strategy. Pass to `open_session(..., reconnect=...)`. |
+
+### STTConfig
+
+```python
+STTConfig(
+    model="default",        # canonical model; adapter maps to e.g. Deepgram "nova-2"
+    language="pt-BR",       # canonical BCP-47 tag; adapter maps to the provider's code
+    sample_rate=16000,      # Hz of the frames YOU push
+    encoding="pcm_s16le",   # encoding of the frames YOU push
+    channels=1,             # channels YOU push; adapter downmixes to mono
+    interim_results=True,   # request partials where the provider supports them
+)
+```
+
+The `sample_rate`/`encoding`/`channels` fields describe the audio **you push** — the adapter resamples/transcodes to whatever the backend needs. Push the raw frame; never resample in your own code.
+
+### Providers at a glance
+
+| Provider (`name` / aliases) | Authenticate with | Extra |
+|---|---|---|
+| **Deepgram** (`deepgram`) | `api_key=` or `DEEPGRAM_API_KEY` | `stt-deepgram` |
+| **AssemblyAI** (`assemblyai`) | `api_key=` or `ASSEMBLYAI_API_KEY` | `stt-assemblyai` |
+| **Google / Chirp** (`google`, `chirp`) | `credentials_path=` or `GOOGLE_APPLICATION_CREDENTIALS` | `stt-google` |
+| **Azure AI Speech** (`azure`) | `subscription_key=` + `region=` (or `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`) | `stt-azure` |
+| **Amazon Transcribe** (`aws`, `transcribe`) | AWS credential chain + `region=` or `AWS_REGION` | `stt-aws` |
+| **WhisperLive** (`whisperlive`, `whisper`) | none (self-hosted); `endpoint_url=` or `WHISPERLIVE_URL` (default `ws://localhost:9090`) | `stt-whisperlive` |
+| **Fake** (`fake`) | none — in-memory scripted events for tests | — |
+
+Pick a model with `STTConfig(model=...)` (e.g. Deepgram `"nova-2"`, Google `"chirp_2"`); `"default"` lets each adapter pick a sensible model.
+
+### Transparent reconnection
+
+Network drops are handled for you. The session's background receive pump consults a `ReconnectPolicy`: on a retryable drop it backs off and re-opens the stream, so your `async for` only sees a brief pause.
+
+```python
+from steely.stt import ReconnectPolicy
+
+policy = ReconnectPolicy(max_retries=5, base_delay=0.5, backoff=2.0, max_delay=10)
+session = await client.open_session(config, reconnect=policy)
+```
+
+Set `max_retries=0` to disable it; exhausted retries (or a non-retryable error) raise `STTConnectionError` at the consumer. Every network/backend failure surfaces as that one error type — no backend-native exception ever reaches your code.
+
+### Testing without a network
+
+Use the `"fake"` provider — an in-memory backend implementing the same contract, no SDK required:
+
+```python
+from steely.stt import STTClient, STTConfig, STTEvent, EventType
+from steely.stt.providers.fake import FakeProvider
+
+script = [STTEvent(EventType.FINAL, "olá mundo", 0, 900, language="pt-BR")]
+client = STTClient(FakeProvider(script=script))
+session = await client.open_session(STTConfig())
+events = [ev async for ev in session]     # replays your script, records pushed frames
+```
+
+A runnable end-to-end example (provider selected from `STT_PROVIDER`, defaults to `fake`) lives in [`examples/stt_streaming.py`](examples/stt_streaming.py).
 
 ---
 

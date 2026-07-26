@@ -44,8 +44,9 @@ from steely.grafana import GrafanaSink
 from steely.logger import log, Logger
 from steely.pprint import pprint
 from steely.scan import scan
+from steely.stt import EventType, STTClient, STTConfig, STTEvent
 
-__version__ = "1.0.2.2"
+__version__ = "1.0.3.0"
 __author__ = "Steely Contributors"
 __all__ = [
     "Dan",
@@ -58,6 +59,10 @@ __all__ = [
     "EmailClient",
     "EmailMessage",
     "EmailResult",
+    "STTClient",
+    "STTConfig",
+    "STTEvent",
+    "EventType",
 ]
 
 
