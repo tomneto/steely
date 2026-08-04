@@ -132,6 +132,38 @@ def test_retries_transient_then_succeeds(server):
     assert len(server.state.requests) == 3
 
 
+def test_quota_exhaustion_429_is_not_retried(server):
+    """A 429 for plan quota is permanent — retrying wastes the caller's allowance.
+
+    Resend reuses 429 for rate limiting (transient) and for an exhausted daily or
+    monthly quota (not transient). Retrying the latter turned one doomed send into
+    three requests against an already-spent quota.
+    """
+    server.state.responses = [(429, {"name": "daily_quota_exceeded",
+                                     "message": "You have reached your daily quota"})]
+    result = _provider(server, max_attempts=3).send(_msg())
+    assert result.success is False
+    assert result.status_code == 429
+    assert len(server.state.requests) == 1
+    # The body must survive into the message so callers can classify it.
+    assert "daily_quota_exceeded" in result.message
+
+
+def test_monthly_quota_429_is_not_retried(server):
+    server.state.responses = [(429, {"name": "monthly_quota_exceeded"})]
+    result = _provider(server, max_attempts=3).send(_msg())
+    assert result.success is False
+    assert len(server.state.requests) == 1
+
+
+def test_rate_limit_429_is_still_retried(server):
+    """The transient flavour of 429 must keep retrying."""
+    server.state.responses = [(429, {"name": "rate_limit_exceeded"}), (200, {"id": "ok"})]
+    result = _provider(server, max_attempts=3).send(_msg())
+    assert result.success is True
+    assert len(server.state.requests) == 2
+
+
 def test_retries_exhausted(server):
     server.state.responses = [(500, {"e": "boom"})]
     result = _provider(server, max_attempts=3).send(_msg())

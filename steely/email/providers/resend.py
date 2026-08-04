@@ -24,6 +24,16 @@ from steely.email.result import EmailResult
 from steely.email.retry import RetryableError, with_retry
 from steely.logger import Logger
 
+# Resend answers 429 both for rate limiting and for plan-quota exhaustion. Only
+# the former is transient; these markers identify the latter in the response body.
+_QUOTA_MARKERS = ("daily_quota_exceeded", "monthly_quota_exceeded")
+
+
+def _is_quota_exhaustion(body: str) -> bool:
+    """True when a 429 body reports an exhausted plan quota rather than throttling."""
+    lowered = (body or "").lower()
+    return any(marker in lowered for marker in _QUOTA_MARKERS)
+
 
 class ResendProvider(EmailProvider):
     """Send email via ``POST https://api.resend.com/emails``.
@@ -119,6 +129,22 @@ class ResendProvider(EmailProvider):
                 headers=headers,
                 timeout=self.timeout,
             )
+            if resp.status_code == 429 and _is_quota_exhaustion(resp.text):
+                # Resend reuses 429 for two very different things: rate limiting
+                # (transient — retrying is correct) and plan quota exhaustion
+                # (not transient — the daily/monthly allowance is gone and will
+                # not come back within a backoff window). Retrying the latter
+                # turns one doomed send into three requests and delays the
+                # caller's fallback for nothing.
+                return resp
+            if resp.status_code >= 500:
+                # A 5xx may follow a message Resend already accepted, so a retry
+                # can deliver a duplicate. Logged because the caller cannot see it.
+                self.__logger__(
+                    "warning",
+                    f"Resend {resp.status_code} — retrying; may duplicate if the "
+                    f"message was already accepted",
+                )
             if resp.status_code == 429 or resp.status_code >= 500:
                 raise RetryableError(f"Resend transient error {resp.status_code}: {resp.text}")
             return resp
