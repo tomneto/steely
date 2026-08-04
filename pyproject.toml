@@ -1,6 +1,6 @@
 [project]
 name = "steely"
-version = "1.0.3.1"
+version = "1.0.3.4"
 description = "A Python developer toolkit with beautiful terminal output: debugging decorators (logging, timing, variable tracking), a thread-safe Logger with Grafana/Loki shipping, provider-agnostic email (SMTP/Resend/HTTP), streaming speech-to-text (Deepgram, AssemblyAI, Google, Azure, AWS, WhisperLive), and FastAPI request recorders."
 readme = "README.md"
 requires-python = ">=3.9"

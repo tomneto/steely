@@ -146,19 +146,22 @@ class TestExceptionFormatting:
 # Context tags (file, line, func)
 # ===================================================================
 
-class TestContextTags:
-    """Each intercepted record adds file/line/func tags."""
+class TestOutputCleanliness:
+    """Intercepted output should be free of internal context tags."""
 
-    def test_tags_present(self, capsys):
+    def test_no_context_tags_in_output(self, capsys):
         Logger.set_global_app_name("App")
         Logger.intercept_stdlib()
 
         logging.getLogger("ctx").info("tag me")
 
         captured = capsys.readouterr()
-        # Tags are emitted as their VALUES (uppercased): file path, lineno, func
-        assert "TEST_TAGS_PRESENT" in captured.out  # funcName value
-        assert "TEST_STDLIB_INTERCEPT.PY" in captured.out  # pathname basename
+        assert "[APP]" in captured.out
+        assert "[CTX]" in captured.out
+        assert "[INFO]" in captured.out
+        # Verify no file/line/func tags leak into output
+        assert ".PY]" not in captured.out  # no file path tag
+        assert "TEST_NO_CONTEXT_TAGS_IN_OUTPUT]" not in captured.out  # no funcName
 
 
 # ===================================================================
@@ -278,3 +281,30 @@ class TestPropagation:
 
         captured = capsys.readouterr()
         assert captured.out.count("single") == 1
+
+
+# ===================================================================
+# Resilience to logging.config.dictConfig (uvicorn's setup)
+# ===================================================================
+
+class TestDictConfigResilience:
+    """Our handlers must survive ``logging.config.dictConfig()`` calls."""
+
+    def test_survives_dictconfig(self, capsys):
+        Logger.set_global_app_name("App")
+        Logger.intercept_stdlib(["mylib"])
+
+        # Simulate what uvicorn does: call dictConfig with a new config
+        import logging.config
+        logging.config.dictConfig({
+            "version": 1,
+            "disable_existing_loggers": False,
+            "loggers": {
+                "mylib": {"level": "INFO"},
+            },
+        })
+
+        logging.getLogger("mylib").info("after dictConfig")
+
+        captured = capsys.readouterr()
+        assert "after dictConfig" in captured.out

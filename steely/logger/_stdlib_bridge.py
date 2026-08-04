@@ -7,6 +7,49 @@ httpx, …) produce the same formatted output as native Steely log calls.
 import logging
 import traceback
 
+# ---------------------------------------------------------------------------
+# dictConfig patch — uvicorn and other frameworks re-configure the logging
+# tree via ``logging.config.dictConfig()``, which removes every handler we
+# attached.  We patch it so our handlers are re-applied after every call.
+# ---------------------------------------------------------------------------
+
+_original_dictConfig = None
+_dictConfig_patch_applied = False
+
+
+def _reapply_handlers():
+    from steely.logger import Logger
+
+    handler = Logger._stdlib_handler
+    if handler is None:
+        return
+
+    if Logger._stdlib_root_intercepted:
+        logging.root.handlers[:] = []
+        logging.root.addHandler(handler)
+
+    for name in Logger._intercepted_stdlib_loggers:
+        log = logging.getLogger(name)
+        log.handlers[:] = []
+        log.addHandler(handler)
+        log.propagate = False
+
+
+def _patched_dictConfig(config):
+    _original_dictConfig(config)
+    _reapply_handlers()
+
+
+def _ensure_dictConfig_patch():
+    global _original_dictConfig, _dictConfig_patch_applied
+    if _dictConfig_patch_applied:
+        return
+    # ``logging.config`` is a separate module; import it lazily.
+    import logging.config
+    _original_dictConfig = logging.config.dictConfig
+    logging.config.dictConfig = _patched_dictConfig
+    _dictConfig_patch_applied = True
+
 # Mapping from Python logging numeric levels to Steely level strings.
 # Compatible with the numeric table in ``Logger.setLevel`` /
 # ``_LEVEL_NUMERIC``.
@@ -43,19 +86,18 @@ class StdlibInterceptHandler(logging.Handler):
         else:
             owner = record.module
 
-        # 3. Append traceback when exc_info is present
-        if record.exc_info and record.exc_info[0] is not None:
-            tb_text = "".join(traceback.format_exception(*record.exc_info))
-            message = f"{record.msg}\n{tb_text}"
-        else:
+        # 3. Interpolate %s / %d placeholders (stdlib stores the format
+        #    string in record.msg and the values in record.args; we must
+        #    call getMessage() to merge them).
+        try:
+            message = record.getMessage()
+        except (TypeError, ValueError):
             message = record.msg
 
-        # 4. Context tags — enxuto
-        tags = {
-            "file": record.pathname,
-            "line": str(record.lineno),
-            "func": record.funcName,
-        }
+        # 4. Append traceback when exc_info is present
+        if record.exc_info and record.exc_info[0] is not None:
+            tb_text = "".join(traceback.format_exception(*record.exc_info))
+            message = f"{message}\n{tb_text}"
 
         # 5. Dispatch through Steely's named-logger registry
         steely_logger = Logger.getLogger(owner)
@@ -63,7 +105,6 @@ class StdlibInterceptHandler(logging.Handler):
             steely_level,
             message,
             app_name=self._app_name,
-            **tags,
         )
 
 
@@ -110,6 +151,9 @@ def intercept_stdlib(logger_names=None, app_name=None):
         Logger._stdlib_handler._app_name = app_name
 
     handler = Logger._stdlib_handler
+
+    # --- patch dictConfig so uvicorn (and others) can't erase our handlers ---
+    _ensure_dictConfig_patch()
 
     # --- clear any module-wide suppress level set via logging.disable() ---
     logging.disable(logging.NOTSET)

@@ -1524,7 +1524,7 @@ wheels = [
 
 [[package]]
 name = "steely"
-version = "1.0.3.0"
+version = "1.0.3.2"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
