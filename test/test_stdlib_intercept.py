@@ -284,6 +284,39 @@ class TestPropagation:
 
 
 # ===================================================================
+# Named-logger effective level (regression: setLevel(0)/NOTSET defers to
+# root's default WARNING, silently dropping INFO — e.g. uvicorn.access)
+# ===================================================================
+
+class TestNamedLoggerEffectiveLevel:
+    """Named loggers must have a real effective level, not NOTSET, so
+    INFO records are never silently swallowed before reaching the
+    handler — regardless of the root logger's own level."""
+
+    def test_effective_level_enables_info(self):
+        Logger.set_global_app_name("App")
+        Logger.intercept_stdlib(["uvicorn.access"])
+
+        log = logging.getLogger("uvicorn.access")
+        assert log.getEffectiveLevel() <= logging.INFO
+        assert log.isEnabledFor(logging.INFO)
+
+    def test_info_passes_even_with_root_at_warning(self, capsys):
+        # Simulate a process where root's level is left at its default
+        # (WARNING) — e.g. because uvicorn's own configure_logging() ran
+        # before intercept_stdlib(), like in `--reload` worker subprocesses.
+        logging.root.setLevel(logging.WARNING)
+
+        Logger.set_global_app_name("App")
+        Logger.intercept_stdlib(["uvicorn.access"])
+
+        logging.getLogger("uvicorn.access").info("GET / 200")
+
+        captured = capsys.readouterr()
+        assert "GET / 200" in captured.out
+
+
+# ===================================================================
 # Resilience to logging.config.dictConfig (uvicorn's setup)
 # ===================================================================
 

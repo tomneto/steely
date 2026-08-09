@@ -33,6 +33,7 @@ def _reapply_handlers():
         log.handlers[:] = []
         log.addHandler(handler)
         log.propagate = False
+        log.setLevel(1)
 
 
 def _patched_dictConfig(config):
@@ -173,7 +174,7 @@ def intercept_stdlib(logger_names=None, app_name=None):
             continue
         log = logging.getLogger(name)
         log.handlers[:] = []
-        log.setLevel(0)
+        log.setLevel(1)
         log.addHandler(handler)
         log.propagate = False
         Logger._intercepted_stdlib_loggers.add(name)
