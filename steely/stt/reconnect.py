@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import random
-from typing import Tuple, Type
 
 from steely.stt.errors import STTConnectionError
 
@@ -51,7 +50,7 @@ class ReconnectPolicy:
         backoff: float = 2.0,
         max_delay: float = 10.0,
         jitter: float = 0.3,
-        retryable_excs: Tuple[Type[BaseException], ...] = (STTConnectionError,),
+        retryable_excs: tuple[type[BaseException], ...] = (STTConnectionError,),
         sleep=None,
     ) -> None:
         self.max_retries = max_retries

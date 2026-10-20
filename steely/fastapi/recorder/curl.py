@@ -41,9 +41,11 @@ import json
 import os
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-from fastapi import Request
+from steely.fastapi.recorder._compat import require_request
+from steely.fastapi.recorder._redact import redact_body as _redact_body
+from steely.fastapi.recorder._redact import redact_headers
 
 __all__ = ["curl", "CurlRecorder"]
 
@@ -64,6 +66,13 @@ class CurlRecorder:
     group_mode : bool, optional
         If True, appends commands to a single file. If False, replaces.
         Default is True.
+    sensitive_headers : set of str, optional
+        Header names to mask. Defaults to
+        :data:`steely.fastapi.recorder._redact.SENSITIVE_HEADERS`.
+    redact_headers : bool, optional
+        Mask sensitive headers. Default is True.
+    redact_body : bool, optional
+        Mask sensitive keys in JSON bodies. Default is True.
 
     Attributes
     ----------
@@ -81,12 +90,18 @@ class CurlRecorder:
         self,
         script_name: str,
         output_dir: str = "./.curl_scripts",
-        group_mode: bool = True
+        group_mode: bool = True,
+        sensitive_headers: Optional[set[str]] = None,
+        redact_headers: bool = True,
+        redact_body: bool = True,
     ):
         self.script_name = script_name
         self.output_dir = output_dir
         self.script_path = os.path.join(output_dir, f"{script_name}.sh")
         self.group_mode = group_mode
+        self.sensitive_headers = sensitive_headers
+        self.redact_headers = redact_headers
+        self.redact_body = redact_body
 
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
@@ -102,7 +117,7 @@ class CurlRecorder:
             f.write(f"# Auto-generated curl commands for {self.script_name}\n")
             f.write(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("#\n")
-            f.write("# Usage: bash {}\n".format(os.path.basename(self.script_path)))
+            f.write(f"# Usage: bash {os.path.basename(self.script_path)}\n")
             f.write("#\n\n")
 
         # Make script executable
@@ -112,7 +127,7 @@ class CurlRecorder:
         self,
         method: str,
         url: str,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         body: Optional[Any],
         comment: Optional[str] = None
     ) -> str:
@@ -191,7 +206,7 @@ class CurlRecorder:
         self,
         method: str,
         url: str,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         body: Optional[Any],
         path: str,
         query_string: str = ""
@@ -213,7 +228,16 @@ class CurlRecorder:
             Endpoint path pattern
         query_string : str, optional
             Query string for context
+
+        Notes
+        -----
+        Credentials are stripped here, before anything touches the disk.
         """
+        headers = redact_headers(
+            headers, self.sensitive_headers, enabled=self.redact_headers
+        )
+        body = _redact_body(body, enabled=self.redact_body)
+
         # Generate comment
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         comment = f"{method} {path}"
@@ -246,7 +270,10 @@ class CurlRecorder:
 def curl(
     output_dir: str = "./.curl_scripts",
     script_name: Optional[str] = None,
-    group_mode: bool = True
+    group_mode: bool = True,
+    sensitive_headers: Optional[set[str]] = None,
+    keep_sensitive_headers: bool = False,
+    redact_body: bool = True,
 ):
     """
     Decorator that records FastAPI endpoint requests as curl commands.
@@ -264,6 +291,18 @@ def curl(
     group_mode : bool, optional
         If True, appends multiple requests to the same file.
         If False, replaces the file each time. Default is True.
+    sensitive_headers : set of str, optional
+        Header names to mask instead of the built-in list
+        (``authorization``, ``cookie``, ``set-cookie``, ``proxy-authorization``,
+        ``x-api-key``, ``api-key``, ``x-auth-token``). Matching is
+        case-insensitive.
+    keep_sensitive_headers : bool, optional
+        Write credential headers verbatim. Only set this when the generated
+        script really must replay authentication — the file is plain text on
+        disk. Default is False (headers are masked as ``***``).
+    redact_body : bool, optional
+        Mask values of sensitive-looking JSON keys (``password``, ``token``,
+        ``secret``, ``api_key``, ``credit_card``, …). Default is True.
 
     Returns
     -------
@@ -310,16 +349,28 @@ def curl(
     - Generated scripts are executable (chmod +x applied automatically).
     - Recording happens BEFORE endpoint execution (pre-execution recording).
     - Works with both sync and async FastAPI endpoints.
+    - Credential headers and sensitive body keys are redacted by default; see
+      ``keep_sensitive_headers`` / ``redact_body`` to change that.
+    - Requires the optional FastAPI extra: ``pip install "steely[fastapi]"``.
     """
     def decorator(func):
+        request_cls = require_request()
+
         # Determine script name
         scr_name = script_name if script_name else func.__name__
-        recorder = CurlRecorder(scr_name, output_dir, group_mode)
+        recorder = CurlRecorder(
+            scr_name,
+            output_dir,
+            group_mode,
+            sensitive_headers=sensitive_headers,
+            redact_headers=not keep_sensitive_headers,
+            redact_body=redact_body,
+        )
 
         # Get the function signature to check if Request is already a parameter
         sig = inspect.signature(func)
         has_request_param = any(
-            param.annotation == Request or param.name == "request"
+            param.annotation is request_cls or param.name == "request"
             for param in sig.parameters.values()
         )
 
@@ -330,7 +381,7 @@ def curl(
                 request = kwargs.get('request')
                 if request is None:
                     for arg in args:
-                        if isinstance(arg, Request):
+                        if isinstance(arg, request_cls):
                             request = arg
                             break
 
@@ -381,7 +432,9 @@ def curl(
             # Preserve signature but inject Request if not present
             if not has_request_param:
                 params = list(sig.parameters.values())
-                params.append(inspect.Parameter('request', inspect.Parameter.KEYWORD_ONLY, annotation=Request))
+                params.append(inspect.Parameter(
+                    'request', inspect.Parameter.KEYWORD_ONLY, annotation=request_cls
+                ))
                 async_wrapper.__signature__ = sig.replace(parameters=params)
             else:
                 async_wrapper.__signature__ = sig
@@ -394,7 +447,7 @@ def curl(
                 request = kwargs.get('request')
                 if request is None:
                     for arg in args:
-                        if isinstance(arg, Request):
+                        if isinstance(arg, request_cls):
                             request = arg
                             break
 
@@ -441,7 +494,9 @@ def curl(
             # Preserve signature but inject Request if not present
             if not has_request_param:
                 params = list(sig.parameters.values())
-                params.append(inspect.Parameter('request', inspect.Parameter.KEYWORD_ONLY, annotation=Request))
+                params.append(inspect.Parameter(
+                    'request', inspect.Parameter.KEYWORD_ONLY, annotation=request_cls
+                ))
                 sync_wrapper.__signature__ = sig.replace(parameters=params)
             else:
                 sync_wrapper.__signature__ = sig

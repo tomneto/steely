@@ -1,6 +1,6 @@
 [project]
 name = "steely"
-version = "1.0.3.5"
+dynamic = ["version"]
 description = "A Python developer toolkit with beautiful terminal output: debugging decorators (logging, timing, variable tracking), a thread-safe Logger with Grafana/Loki shipping, provider-agnostic email (SMTP/Resend/HTTP), streaming speech-to-text (Deepgram, AssemblyAI, Google, Azure, AWS, WhisperLive), and FastAPI request recorders."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -52,12 +52,14 @@ classifiers = [
     "Typing :: Typed",
     "Environment :: Console"
 ]
-dependencies = [
-    "fastapi",
-    "twine>=6.2.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
+# FastAPI request recorders (steely.fastapi.recorder). The core package never
+# imports fastapi, so `import steely` is safe without this extra.
+#   pip install "steely[fastapi]"
+fastapi = ["fastapi>=0.100"]
+
 # HTTP email providers (Resend, generic HTTPAPIProvider) need httpx.
 # SMTP works with the standard library alone and needs no extra.
 #   pip install "steely[http]"
@@ -88,6 +90,7 @@ stt-all = [
     "audioop-lts; python_version >= '3.13'",
 ]
 all = [
+    "fastapi>=0.100",
     "deepgram-sdk>=3.0",
     "assemblyai>=0.30",
     "google-cloud-speech>=2.26",
@@ -104,9 +107,51 @@ Documentation = "https://github.com/tomneto/steely#readme"
 Repository = "https://github.com/tomneto/steely"
 Issues = "https://github.com/tomneto/steely/issues"
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "httpx>=0.27",
+    "websockets>=12",
+    "fastapi>=0.100",
+    "twine>=6.2.0",
+    "audioop-lts; python_version >= '3.13'",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["steely"]
+
+[tool.hatch.version]
+path = "steely/__init__.py"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+    # contextlib.suppress is ~2x the call overhead of try/except-pass and this
+    # library rewrites hot paths for exactly that kind of margin (see Logger.log).
+    "SIM105",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Runnable demos: long curl one-liners in docstrings, and deliberately "useless"
+# expressions/unused locals that exist to be observed by the decorators.
+"examples/*" = ["E501", "B018", "F841"]
+# The scan()/log() demo at the bottom of the package assigns locals purely so the
+# tracker has something to report.
+"steely/__init__.py" = ["F841"]
+# Tests intentionally construct odd shapes: unused locals under tracing
+# decorators, broad pytest.raises, imports after sys.path/monkeypatch setup.
+"test/*" = ["F841", "B017", "E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+asyncio_mode = "auto"

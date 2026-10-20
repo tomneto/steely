@@ -18,11 +18,64 @@ Example
 ...     from_email="noreply@example.com",
 ...     from_name="ACME",
 ... )
+
+Attachments
+-----------
+>>> from steely.email import Attachment, EmailMessage
+>>> msg = EmailMessage(
+...     to=["dest@example.com"],
+...     subject="Report",
+...     body_html='<p>See the attached report. <img src="cid:logo"></p>',
+...     attachments=[
+...         Attachment(filename="report.xlsx", content=b"...",
+...                    content_type="text/csv"),
+...         Attachment(filename="logo.png", content=b"...", content_type="image/png",
+...                    inline=True, content_id="logo"),
+...     ],
+... )
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+
+
+@dataclass
+class Attachment:
+    """A single file to attach to an :class:`EmailMessage`.
+
+    Parameters
+    ----------
+    filename:
+        Name shown to the recipient.
+    content:
+        Raw bytes of the file. Providers encode it as needed (base64 for the
+        HTTP APIs, a base64 MIME part for SMTP).
+    content_type:
+        MIME type such as ``"application/pdf"``. Defaults to
+        ``"application/octet-stream"`` when the type is unknown.
+    inline:
+        When ``True`` the part is marked ``Content-Disposition: inline`` so it
+        can be referenced from the HTML body instead of being listed as a
+        separate download.
+    content_id:
+        The ``Content-ID`` used by ``<img src="cid:...">`` for inline parts.
+        Ignored when ``inline`` is ``False``.
+    """
+
+    filename: str
+    content: bytes
+    content_type: str = "application/octet-stream"
+    inline: bool = False
+    content_id: str | None = None
+
+    def mime_parts(self) -> tuple:
+        """Return ``(maintype, subtype)`` derived from ``content_type``."""
+        ctype = (self.content_type or "application/octet-stream").split(";")[0].strip()
+        if "/" in ctype:
+            maintype, _, subtype = ctype.partition("/")
+        else:
+            maintype, subtype = "application", "octet-stream"
+        return maintype or "application", subtype or "octet-stream"
 
 
 @dataclass
@@ -51,18 +104,22 @@ class EmailMessage:
         ``"Name <email>"`` header/field.
     headers:
         Optional extra headers (SMTP) / ``headers`` object (Resend).
+    attachments:
+        Optional list of :class:`Attachment`. Supported by ``SMTPProvider`` and
+        ``ResendProvider``; the generic HTTP provider ignores it.
     """
 
-    to: List[str]
+    to: list[str]
     subject: str
-    body_html: Optional[str] = None
-    body_text: Optional[str] = None
-    cc: Optional[List[str]] = None
-    bcc: Optional[List[str]] = None
-    reply_to: Optional[str] = None
-    from_email: Optional[str] = None
-    from_name: Optional[str] = None
-    headers: Optional[Dict[str, str]] = None
+    body_html: str | None = None
+    body_text: str | None = None
+    cc: list[str] | None = None
+    bcc: list[str] | None = None
+    reply_to: str | None = None
+    from_email: str | None = None
+    from_name: str | None = None
+    headers: dict[str, str] | None = None
+    attachments: list[Attachment] | None = None
 
     def __post_init__(self) -> None:
         # Accept a bare string for any recipient field for ergonomics.
@@ -78,9 +135,9 @@ class EmailMessage:
         if not (self.body_html or self.body_text):
             raise ValueError("EmailMessage requires body_html or body_text")
 
-    def recipients(self) -> List[str]:
+    def recipients(self) -> list[str]:
         """Return all envelope recipients (to + cc + bcc)."""
-        out: List[str] = list(self.to)
+        out: list[str] = list(self.to)
         if self.cc:
             out += self.cc
         if self.bcc:

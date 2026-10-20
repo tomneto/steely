@@ -146,7 +146,7 @@ class TestLoggerLogMethod:
             assert len(log_files) == 1
             assert log_files[0].endswith(".log")
 
-            with open(os.path.join(tmpdir, log_files[0]), 'r') as f:
+            with open(os.path.join(tmpdir, log_files[0])) as f:
                 content = f.read()
                 assert "File log message" in content
 
@@ -189,7 +189,7 @@ class TestLoggerLogMethod:
 
             # Verify the log file contains the message
             log_file_path = os.path.join(non_existent_dir, log_files[0])
-            with open(log_file_path, 'r') as f:
+            with open(log_file_path) as f:
                 content = f.read()
                 assert "Test message in new folder" in content
                 assert "[APP]" in content
@@ -261,26 +261,29 @@ class TestLoggerLevelColors:
 class TestLoggerCleanFlag:
     """Tests for Logger clean screen functionality."""
 
-    def test_clean_flag_triggers_clear(self):
-        """Test that clean flag triggers screen clear."""
+    def test_clean_flag_triggers_clear(self, capsys):
+        """Test that clean flag emits the ANSI clear sequence (no subprocess)."""
         logger = Logger("owner", "app")
         logger.clean = True
 
         with patch('os.system') as mock_system:
             logger.log("INFO", "Message", clean=False, supress=False, debug=True)
 
-            mock_system.assert_called_once()
+        out = capsys.readouterr().out
+        assert out.startswith("\x1b[2J\x1b[H")
+        # Clearing must not spawn `clear`/`cls` — one subprocess per message.
+        mock_system.assert_not_called()
 
-    def test_master_clean_keeps_clean_flag(self):
+    def test_master_clean_keeps_clean_flag(self, capsys):
         """Test that master_clean keeps clean flag True."""
         logger = Logger("owner", "app", clean=True)
         logger.clean = True
 
-        with patch('os.system'):
-            logger.log("INFO", "Message", clean=False, supress=False, debug=True)
+        logger.log("INFO", "Message", clean=False, supress=False, debug=True)
+        capsys.readouterr()
 
-            # master_clean should keep clean True
-            assert logger.master_clean is True
+        # master_clean should keep clean True
+        assert logger.master_clean is True
 
 
 class TestRelativeFunction:
@@ -292,7 +295,11 @@ class TestRelativeFunction:
 
         result = relative("test.txt")
 
-        expected_dir = os.path.dirname(os.path.abspath(__file__).replace("test/test_logger.py", "steely/logger/__init__.py"))
+        expected_dir = os.path.dirname(
+            os.path.abspath(__file__).replace(
+                "test/test_logger.py", "steely/logger/__init__.py"
+            )
+        )
         # Just verify it's constructing a path with the filename
         assert result.endswith("test.txt")
 

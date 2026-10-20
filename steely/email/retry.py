@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 from functools import wraps
-from typing import Callable, Optional, Tuple, Type
+from typing import Callable
 
 
 class RetryableError(Exception):
@@ -23,8 +23,8 @@ def with_retry(
     max_attempts: int = 3,
     base_delay: float = 1.0,
     backoff: float = 2.0,
-    retry_on: Tuple[Type[BaseException], ...] = (RetryableError,),
-    sleep: Optional[Callable[[float], None]] = None,
+    retry_on: tuple[type[BaseException], ...] = (RetryableError,),
+    sleep: Callable[[float], None] | None = None,
 ):
     """Decorator that retries ``fn`` up to ``max_attempts`` times.
 

@@ -51,6 +51,33 @@ cd steely
 pip install -e .
 ```
 
+### Development
+
+Dev tooling lives in the `dev` dependency group (pytest, ruff and every optional
+SDK the test suite exercises):
+
+```bash
+uv sync --group dev
+uv run ruff check .      # lint
+uv run pytest            # tests
+uv build --wheel         # build
+```
+
+CI (`.github/workflows/ci.yml`) runs the lint, the suite on Python 3.9–3.13, and a
+wheel build on every push and pull request.
+
+The version has a **single source of truth**: `__version__` in
+`steely/__init__.py`. `pyproject.toml` reads it via `[tool.hatch.version]`, so
+never write a version into `pyproject.toml`.
+
+Publishing reads the PyPI token from the environment — copy `.env.example` to
+`.env` (gitignored), fill in `PYPI_TOKEN`, then:
+
+```bash
+set -a && source .env && set +a
+./build.sh
+```
+
 ### Optional extras
 
 The core is dependency-light; each integration that needs a third-party SDK is an
@@ -60,6 +87,7 @@ opt-in extra. Install only what you use:
 |-------|---------|---------|
 | *(none)* | `pip install steely` | Decorators, `Logger`, Grafana sink, **SMTP** email |
 | `http` | `pip install "steely[http]"` | Resend + generic HTTP-API email providers (`httpx`) |
+| `fastapi` | `pip install "steely[fastapi]"` | FastAPI request recorders (`steely.fastapi.recorder`) |
 | `stt-deepgram` | `pip install "steely[stt-deepgram]"` | Deepgram streaming STT |
 | `stt-assemblyai` | `pip install "steely[stt-assemblyai]"` | AssemblyAI streaming STT |
 | `stt-google` | `pip install "steely[stt-google]"` | Google Cloud / Chirp streaming STT |
@@ -579,9 +607,11 @@ Logger.getLogger("uvicorn").setLevel("ERROR")   # children inherit
 
 The root-logger approach is simpler but captures *all* third-party output. The named-logger approach is more selective; each named logger gets ``propagate=False`` to avoid double emission.
 
-#### Idempotency
+#### Idempotency and thread safety
 
 Calling ``intercept_stdlib`` multiple times is safe — handlers are never duplicated. If you call it once with root and again with a named list, the named loggers also get ``propagate=False`` so no line appears twice.
+
+It is also safe to call from several threads at once: the whole installation runs under one lock, so racing callers cannot build two handlers, attach one twice, or corrupt the internal ``logging.config.dictConfig`` patch.
 
 ---
 
@@ -618,7 +648,11 @@ logger = Logger("MyApp", "main", destination="/logs", debug=False)
 
 ### Thread Safety
 
-All logging operations run in separate threads for non-blocking behavior:
+Logging is **synchronous** — `log()` formats, writes and prints on the calling
+thread — and **thread-safe**: a per-instance lock guards the file write, the
+console print and the callbacks, so concurrent threads never interleave a
+partial line. (For off-thread shipping, `GrafanaSink` batches and sends in a
+background thread; see below.)
 
 ```python
 from steely.logger import Logger
@@ -628,12 +662,12 @@ logger = Logger("MyApp", "worker")
 
 def process_items(items):
     for item in items:
-        logger.info(f"Processing {item}")  # Non-blocking
+        logger.info(f"Processing {item}")  # safe from any thread
         # Heavy processing here...
         time.sleep(0.1)
     logger.success("All items processed")
 
-# Logging won't slow down your processing
+# Each call writes and flushes before returning
 process_items(["item1", "item2", "item3"])
 ```
 
@@ -1044,6 +1078,43 @@ Perfect for:
 
 Steely provides decorators for FastAPI that automatically record your API requests for testing, documentation, and debugging purposes.
 
+FastAPI is an **optional** extra — `import steely` never pulls it in:
+
+```bash
+pip install "steely[fastapi]"
+```
+
+The recorders import FastAPI lazily, so `import steely.fastapi.recorder` is safe
+without the extra; a decorator raises `FastAPINotAvailableError` with the install
+hint if you actually use one.
+
+### Credential redaction
+
+Recorded requests land in plain-text files on disk that people commit, paste into
+tickets and share. So **by default steely redacts credentials before writing**:
+
+| What | Default |
+|---|---|
+| `Authorization`, `Cookie`, `Set-Cookie`, `Proxy-Authorization`, `X-API-Key`, `API-Key`, `X-Auth-Token` | replaced with `***` |
+| JSON body values under sensitive-looking keys (`password`, `token`, `secret`, `api_key`, `credit_card`, `cvv`, …) | replaced with `"***"` |
+
+Both recorders accept the same three knobs:
+
+```python
+# Mask a different header set instead of the built-in one
+@recorder.curl(sensitive_headers={"x-tenant-secret"})
+
+# Keep auth verbatim, so the generated script can actually replay the request.
+# The token then sits in cleartext on disk — only do this for local scratch work.
+@recorder.curl(keep_sensitive_headers=True)
+
+# Record bodies untouched (headers are still masked)
+@recorder.postman(redact_body=False)
+```
+
+Header matching is case-insensitive; body matching is on key substrings and walks
+nested objects and arrays.
+
 ### Postman Recorder
 
 The `postman` decorator automatically captures requests and responses, generating Postman Collection v2.1 format files that can be imported directly into Postman.
@@ -1192,6 +1263,7 @@ This will create:
 - **Team Collaboration**: Share API examples with teammates easily
 - **CI/CD Integration**: Use generated curl scripts in your automated tests
 - **Zero Configuration**: Works out of the box with sensible defaults
+- **Safe by Default**: Credentials are redacted before anything touches the disk
 
 ---
 

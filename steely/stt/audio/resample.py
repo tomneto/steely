@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import array
 import sys
-from typing import Any, Dict, Optional
+from typing import Any
 
 try:  # audioop is stdlib on <= 3.12
     import audioop  # type: ignore
@@ -38,7 +38,7 @@ def to_backend_pcm(
     out_rate: int,
     out_channels: int = 1,
     out_encoding: str = "pcm_s16le",
-    state: Optional[Dict[str, Any]] = None,
+    state: dict[str, Any] | None = None,
 ) -> bytes:
     """Convert one raw PCM ``frame`` to the backend's required format.
 

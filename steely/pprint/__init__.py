@@ -1,7 +1,7 @@
 import inspect
 import os
 
-from steely.design import UnicodeColors, UnicodeColor
+from steely.design import UnicodeColor, UnicodeColors
 
 
 def pprint(*args, color: UnicodeColor = UnicodeColors.header, **kwargs):

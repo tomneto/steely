@@ -68,7 +68,7 @@ class TestCurlCommandGeneration:
         assert script_path.exists()
 
         # Read script content
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Verify script header
@@ -90,7 +90,7 @@ class TestCurlCommandGeneration:
 
         # Read script
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Verify POST method
@@ -107,7 +107,7 @@ class TestCurlCommandGeneration:
 
         # Read script
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Verify headers are present (using -H flag)
@@ -135,7 +135,7 @@ class TestCurlCommandGeneration:
 
         # Read script
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Should have multiple curl commands
@@ -152,7 +152,7 @@ class TestCurlCommandFormat:
         client.get("/items/1?q=search")
 
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # URLs should be quoted
@@ -164,7 +164,7 @@ class TestCurlCommandFormat:
         client.get("/items/1")
 
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Headers should use -H "key: value" format
@@ -192,7 +192,7 @@ class TestCurlCommandFormat:
 
             script_path = Path(tmpdir) / "json_test.sh"
             if script_path.exists():
-                with open(script_path, 'r') as f:
+                with open(script_path) as f:
                     content = f.read()
 
                 # Should have -d flag for data
@@ -204,7 +204,7 @@ class TestCurlCommandFormat:
         client.get("/items/42")
 
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Should have comment lines (starting with #)
@@ -264,7 +264,7 @@ class TestScriptManagement:
         script_path = Path(temp_dir) / "grouped.sh"
         assert script_path.exists()
 
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Should have both endpoints
@@ -310,14 +310,14 @@ class TestRequestCapture:
         # Make request that will fail
         try:
             client.get("/error")
-        except:
+        except Exception:
             pass
 
         # Script should still be created because recording happens first
         script_path = Path(temp_dir) / "error_test.sh"
         assert script_path.exists()
 
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Curl command should be present
@@ -330,7 +330,7 @@ class TestRequestCapture:
         client.get("/items/1")
 
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Should NOT contain response data or status codes from execution
@@ -360,7 +360,7 @@ class TestEdgeCases:
         script_path = Path(temp_dir) / "simple_endpoint.sh"
         assert script_path.exists()
 
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         assert "curl" in content
@@ -372,7 +372,7 @@ class TestEdgeCases:
         client.get("/items/999")
 
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         assert "/items/999" in content
@@ -383,7 +383,7 @@ class TestEdgeCases:
         client.get("/items/1?q=test&limit=10")
 
         script_path = Path(temp_dir) / "test_api.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         assert "q=test" in content
@@ -421,7 +421,7 @@ class TestEdgeCases:
         client.delete("/test")
 
         script_path = Path(temp_dir) / "methods.sh"
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             content = f.read()
 
         # Should have different methods
@@ -442,7 +442,7 @@ class TestScriptExecution:
         script_path = Path(temp_dir) / "test_api.sh"
         assert script_path.exists()
 
-        with open(script_path, 'r') as f:
+        with open(script_path) as f:
             lines = f.readlines()
 
         # First line should be shebang

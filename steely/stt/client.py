@@ -17,7 +17,7 @@ pulls in a provider's optional SDK until that provider is actually requested.
 from __future__ import annotations
 
 import importlib
-from typing import Any, Optional, Union
+from typing import Any
 
 from steely.stt.base import STTProvider, STTSession
 from steely.stt.config import STTConfig
@@ -52,7 +52,7 @@ class STTClient:
         region, endpoint, ...).
     """
 
-    def __init__(self, provider: Union[str, STTProvider], **kwargs: Any) -> None:
+    def __init__(self, provider: str | STTProvider, **kwargs: Any) -> None:
         if isinstance(provider, STTProvider):
             self._provider = provider
         elif isinstance(provider, str):
@@ -78,9 +78,9 @@ class STTClient:
 
     async def open_session(
         self,
-        config: Optional[STTConfig] = None,
+        config: STTConfig | None = None,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> STTSession:
         """Open a streaming session via the underlying provider.

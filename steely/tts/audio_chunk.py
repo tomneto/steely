@@ -10,7 +10,7 @@ backend is behind the session. The final chunk of a stream carries
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -37,5 +37,5 @@ class AudioChunk:
     audio: bytes
     index: int = 0
     is_final: bool = False
-    duration_ms: Optional[int] = None
-    raw: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    duration_ms: int | None = None
+    raw: dict[str, Any] | None = field(default=None, repr=False)

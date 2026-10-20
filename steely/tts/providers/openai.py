@@ -12,7 +12,8 @@ comes from the ``api_key`` kwarg or the ``OPENAI_API_KEY`` environment variable.
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncIterator, List, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.tts.audio_chunk import AudioChunk
 from steely.tts.base import TTSProvider, TTSSession, redact
@@ -32,11 +33,11 @@ _FORMATS = {"pcm": "pcm", "mp3": "mp3", "wav": "wav", "opus": "opus", "flac": "f
 class OpenAISession(TTSSession):
     """One-shot session: buffers text, synthesizes on ``end_input``."""
 
-    def __init__(self, provider: "OpenAIProvider", config: TTSConfig) -> None:
+    def __init__(self, provider: OpenAIProvider, config: TTSConfig) -> None:
         self._provider = provider
         self._config = config
-        self._buf: List[str] = []
-        self._chunks: List[AudioChunk] = []
+        self._buf: list[str] = []
+        self._chunks: list[AudioChunk] = []
         self._i = 0
         self._done = False
         self.closed = False
@@ -85,7 +86,7 @@ class OpenAIProvider(TTSProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         *,
         base_url: str = "https://api.openai.com/v1",
         timeout: float = 30.0,
@@ -116,7 +117,7 @@ class OpenAIProvider(TTSProvider):
         self,
         config: TTSConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> TTSSession:
         return OpenAISession(self, config)

@@ -12,7 +12,8 @@ backend hooks, and register it in ``steely.stt.client._FACTORY``.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.stt.config import STTConfig
 from steely.stt.event import STTEvent
@@ -45,9 +46,9 @@ class STTProvider(ABC):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
-    ) -> "STTSession":
+    ) -> STTSession:
         """Open a live streaming session.
 
         Returns a *connected* :class:`STTSession` whose background receive loop
@@ -101,7 +102,7 @@ class STTSession(ABC):
     async def __anext__(self) -> STTEvent:
         ...
 
-    async def __aenter__(self) -> "STTSession":
+    async def __aenter__(self) -> STTSession:
         return self
 
     async def __aexit__(self, *exc: Any) -> None:

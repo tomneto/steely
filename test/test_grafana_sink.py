@@ -8,11 +8,8 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-import pytest
-
 from steely.grafana import GrafanaSink
 from steely.logger import Logger
-
 
 # ---------------------------------------------------------------------------
 # Helpers

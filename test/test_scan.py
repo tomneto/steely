@@ -1,12 +1,10 @@
 import asyncio
+
 import pytest
-from unittest.mock import patch, MagicMock
-from io import StringIO
-import sys
 
 from steely import Dan
-from steely.scan import scan, ScanPrinter, VariableTracker
-from steely.design import TypeColors, Symbols, UnicodeColors
+from steely.design import Symbols, TypeColors
+from steely.scan import ScanPrinter, VariableTracker, scan
 
 
 class TestScanDecorator:

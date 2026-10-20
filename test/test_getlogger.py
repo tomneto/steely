@@ -4,8 +4,6 @@ Tests for Logger.getLogger(), setLevel(), and hierarchical level inheritance.
 
 import logging  # for standard constants: logging.INFO=20, logging.WARNING=30, etc.
 
-import pytest
-
 from steely.logger import Logger
 
 

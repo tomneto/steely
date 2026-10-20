@@ -1,10 +1,12 @@
 import asyncio
-import pytest
-from unittest.mock import patch, MagicMock
 import inspect
+import traceback
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from steely import Dan
-from steely.logger import log, Logger
+from steely.logger import Logger, log
 
 
 class TestLogDecorator:
@@ -82,23 +84,47 @@ class TestLogDecorator:
         assert "SUCCESS" in captured.out
         assert "Function Finished" in captured.out
 
-    def test_sync_function_logs_error_on_exception(self, capsys):
-        """Test that sync function logs error when exception is raised."""
+    def test_sync_function_logs_error_and_reraises(self, capsys):
+        """Test that sync function logs the error AND lets it propagate."""
         @Dan.log
         def failing_func():
             raise ValueError("Test error")
 
-        # The exception should not propagate because the decorator catches it
-        result = failing_func()
-        assert result is None
-
-        # Give thread time to complete
-        import time
-        time.sleep(0.1)
+        # Logging must observe the failure, never absorb it.
+        with pytest.raises(ValueError, match="Test error"):
+            failing_func()
 
         captured = capsys.readouterr()
         assert "ERROR" in captured.out
         assert "Function Failed" in captured.out
+
+    def test_sync_reraise_preserves_original_traceback(self):
+        """A bare re-raise keeps the raising frame in the traceback."""
+        @Dan.log
+        def failing_func():
+            raise ValueError("Test error")
+
+        with pytest.raises(ValueError) as exc_info:
+            failing_func()
+
+        frames = [f.name for f in traceback.extract_tb(exc_info.value.__traceback__)]
+        assert "failing_func" in frames
+
+    @pytest.mark.asyncio
+    async def test_sync_and_async_agree_on_exception_behavior(self):
+        """The sync and async wrappers must not diverge (they used to)."""
+        @Dan.log
+        def sync_failing():
+            raise ValueError("boom")
+
+        @Dan.log
+        async def async_failing():
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError, match="boom"):
+            sync_failing()
+        with pytest.raises(ValueError, match="boom"):
+            await async_failing()
 
     def test_sync_function_with_no_return(self):
         """Test sync function that returns None."""
@@ -172,10 +198,6 @@ class TestLogDecorator:
         # The async decorator re-raises the exception after logging
         with pytest.raises(RuntimeError, match="Async error"):
             await async_failing()
-
-        # Give thread time to complete
-        import time
-        time.sleep(0.1)
 
         captured = capsys.readouterr()
         assert "ERROR" in captured.out
@@ -270,7 +292,9 @@ class TestLogDecoratorWithLogger:
             def failing_func():
                 raise ValueError("Test error")
 
-            result = failing_func()
+            # The error is logged and then re-raised.
+            with pytest.raises(ValueError, match="Test error"):
+                failing_func()
 
             # Verify error was called
             mock_instance.error.assert_called_once()
@@ -615,7 +639,7 @@ class TestLogDecoratorWithGlobalAppName:
         assert "[APPATDECORATIONTIME]" in captured.out
 
     def test_log_decorator_uses_global_app_name_dynamically(self, capsys):
-        """Test that decorator uses global app_name dynamically at runtime, not at decoration time."""
+        """Global app_name is read at runtime, not captured at decoration time."""
         # Decorate function BEFORE setting global app_name
         @log
         def dynamic_func():

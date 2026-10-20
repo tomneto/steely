@@ -17,7 +17,7 @@ dispatch style used elsewhere in steely.
 from __future__ import annotations
 
 import importlib
-from typing import Any, Union
+from typing import Any
 
 from steely.email.message import EmailMessage
 from steely.email.providers.base import EmailProvider
@@ -44,7 +44,7 @@ class EmailClient:
         keyword arguments are forwarded to that provider's constructor.
     """
 
-    def __init__(self, provider: Union[str, EmailProvider], **kwargs: Any) -> None:
+    def __init__(self, provider: str | EmailProvider, **kwargs: Any) -> None:
         if isinstance(provider, EmailProvider):
             self._provider = provider
         elif isinstance(provider, str):

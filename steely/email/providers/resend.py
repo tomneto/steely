@@ -15,7 +15,8 @@ not this library.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import base64
+from typing import Any
 
 from steely.email.errors import ProviderNotAvailableError
 from steely.email.message import EmailMessage
@@ -35,6 +36,21 @@ def _is_quota_exhaustion(body: str) -> bool:
     return any(marker in lowered for marker in _QUOTA_MARKERS)
 
 
+def _serialize_attachments(attachments: Any) -> list[dict[str, Any]]:
+    """Encode attachments for the Resend JSON payload (content is base64)."""
+    serialized: list[dict[str, Any]] = []
+    for item in attachments:
+        entry: dict[str, Any] = {
+            "filename": item.filename,
+            "content": base64.b64encode(item.content).decode("ascii"),
+            "content_type": item.content_type,
+        }
+        if item.inline and item.content_id:
+            entry["content_id"] = item.content_id
+        serialized.append(entry)
+    return serialized
+
+
 class ResendProvider(EmailProvider):
     """Send email via ``POST https://api.resend.com/emails``.
 
@@ -50,6 +66,9 @@ class ResendProvider(EmailProvider):
     max_attempts:
         Total send attempts; transient errors (429/5xx/network) are retried
         with exponential backoff.
+
+    Attachments on the message are sent as base64 in the ``attachments`` array
+    of the Resend payload.
     """
 
     BASE_URL = "https://api.resend.com"
@@ -57,7 +76,7 @@ class ResendProvider(EmailProvider):
     def __init__(
         self,
         api_key: str,
-        from_email: Optional[str] = None,
+        from_email: str | None = None,
         timeout: int = 30,
         max_attempts: int = 3,
     ) -> None:
@@ -80,11 +99,11 @@ class ResendProvider(EmailProvider):
     def name(self) -> str:
         return "resend"
 
-    def _payload(self, message: EmailMessage, from_email: Optional[str]) -> Dict[str, Any]:
+    def _payload(self, message: EmailMessage, from_email: str | None) -> dict[str, Any]:
         sender = message.from_email or from_email or self.from_email
         if message.from_name and sender:
             sender = f"{message.from_name} <{sender}>"
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "from": sender,
             "to": message.to,
             "subject": message.subject,
@@ -101,16 +120,21 @@ class ResendProvider(EmailProvider):
             payload["reply_to"] = message.reply_to
         if message.headers:
             payload["headers"] = message.headers
+        if message.attachments:
+            payload["attachments"] = _serialize_attachments(message.attachments)
         return payload
 
     def send(
-        self, message: EmailMessage, from_email: Optional[str] = None, **kwargs: Any
+        self, message: EmailMessage, from_email: str | None = None, **kwargs: Any
     ) -> EmailResult:
         payload = self._payload(message, from_email)
         if not payload.get("from"):
             return EmailResult(
                 success=False,
-                message="Resend requires a 'from' address (set from_email on the provider or message)",
+                message=(
+                    "Resend requires a 'from' address "
+                    "(set from_email on the provider or message)"
+                ),
                 provider=self.name,
             )
         headers = {
@@ -156,7 +180,7 @@ class ResendProvider(EmailProvider):
             return EmailResult(success=False, message=str(exc), provider=self.name)
 
         if 200 <= resp.status_code < 300:
-            data: Dict[str, Any] = {}
+            data: dict[str, Any] = {}
             try:
                 data = resp.json()
             except Exception:  # noqa: BLE001

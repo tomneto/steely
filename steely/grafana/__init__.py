@@ -42,11 +42,14 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional
 
 __all__ = ["GrafanaSink"]
 
 _SENTINEL = object()  # signals the worker thread to stop
+
+# Upper bound for the Loki stream-label cache (see GrafanaSink._send_loki).
+_MAX_STREAM_CACHE = 512
 
 _SEVERITY = {
     "INFO":        ("INFO",  9),
@@ -111,7 +114,7 @@ class GrafanaSink:
         batch_size: int = 50,
         flush_interval: float = 5.0,
         timeout: int = 3,
-        auth: Optional[Tuple[str, str]] = None,
+        auth: Optional[tuple[str, str]] = None,
         token: Optional[str] = None,
         protocol: Literal["otlp", "loki"] = "otlp",
         debug: bool = False,
@@ -125,6 +128,11 @@ class GrafanaSink:
             self._push_url = url.rstrip("/") + "/otlp/v1/logs"
 
         self._labels = labels or {}
+        # (level, owner, app) -> (stream key, label dict). The label set of a
+        # stream is fully determined by that triple, and a batch typically
+        # repeats only a handful of them, so building the dict + json.dumps once
+        # per distinct triple beats doing it once per log entry.
+        self._loki_stream_cache: dict[tuple, tuple] = {}
         self._batch_size = batch_size
         self._flush_interval = flush_interval
         self._timeout = timeout
@@ -146,7 +154,16 @@ class GrafanaSink:
     # Public interface
     # ------------------------------------------------------------------
 
-    def __call__(self, level: str, message: str, app_name: Optional[str], owner: str, timestamp: str, content: str, **kwargs):
+    def __call__(
+        self,
+        level: str,
+        message: str,
+        app_name: Optional[str],
+        owner: str,
+        timestamp: str,
+        content: str,
+        **kwargs,
+    ):
         """Enqueue a log entry. Called by Logger.log() — never blocks."""
         # Build a clean log line without ANSI color codes
         parts = [timestamp]
@@ -241,14 +258,23 @@ class GrafanaSink:
     def _send_loki(self, entries: list):
         """Build Loki streams payload and POST."""
         streams: dict = {}
+        cache = self._loki_stream_cache
         for entry in entries:
-            stream_labels = {**self._labels}
-            stream_labels["level"] = entry["level"].lower()
-            stream_labels["owner"] = entry["owner"].lower()
-            if entry["app"] and "app" not in self._labels:
-                stream_labels["app"] = entry["app"].lower()
+            cache_key = (entry["level"], entry["owner"], entry["app"])
+            cached = cache.get(cache_key)
+            if cached is None:
+                stream_labels = {**self._labels}
+                stream_labels["level"] = entry["level"].lower()
+                stream_labels["owner"] = entry["owner"].lower()
+                if entry["app"] and "app" not in self._labels:
+                    stream_labels["app"] = entry["app"].lower()
+                cached = (json.dumps(stream_labels, sort_keys=True), stream_labels)
+                # Bound the cache: label cardinality should be low, but a
+                # runaway owner/app value must not leak memory forever.
+                if len(cache) < _MAX_STREAM_CACHE:
+                    cache[cache_key] = cached
 
-            key = json.dumps(stream_labels, sort_keys=True)
+            key, stream_labels = cached
             if key not in streams:
                 streams[key] = {"stream": stream_labels, "values": []}
             streams[key]["values"].append([entry["ts_ns"], entry["line"]])
@@ -299,11 +325,19 @@ class GrafanaSink:
         try:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:
                 if self._debug:
-                    print(f"[GrafanaSink] {resp.status} OK → {self._push_url}", file=sys.stderr, flush=True)
+                    print(
+                        f"[GrafanaSink] {resp.status} OK → {self._push_url}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
         except urllib.error.HTTPError as e:
             if self._debug:
                 body = e.read().decode(errors="replace")
-                print(f"[GrafanaSink] HTTP {e.code} → {self._push_url}\n  {body}", file=sys.stderr, flush=True)
+                print(
+                    f"[GrafanaSink] HTTP {e.code} → {self._push_url}\n  {body}",
+                    file=sys.stderr,
+                    flush=True,
+                )
         except Exception as e:
             if self._debug:
                 print(f"[GrafanaSink] Error → {self._push_url}\n  {e}", file=sys.stderr, flush=True)

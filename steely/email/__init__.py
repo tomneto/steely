@@ -28,6 +28,12 @@ Quick start
 >>> result = client.send(msg)          # doctest: +SKIP
 >>> result.success, result.message_id  # doctest: +SKIP
 
+Attachments (SMTP and Resend) travel on the message:
+
+>>> from steely.email import Attachment
+>>> msg.attachments = [Attachment(filename="report.pdf", content=b"%PDF-1.4",
+...                               content_type="application/pdf")]
+
 See ``EMAIL_PROVIDERS.md`` for the full integration guide (intended for both
 humans and coding agents consuming this library).
 """
@@ -37,7 +43,7 @@ from steely.email.errors import (
     EmailSendError,
     ProviderNotAvailableError,
 )
-from steely.email.message import EmailMessage
+from steely.email.message import Attachment, EmailMessage
 from steely.email.providers import (
     EmailProvider,
     HTTPAPIProvider,
@@ -49,6 +55,7 @@ from steely.email.result import EmailResult
 __all__ = [
     "EmailClient",
     "EmailMessage",
+    "Attachment",
     "EmailResult",
     "EmailProvider",
     "SMTPProvider",

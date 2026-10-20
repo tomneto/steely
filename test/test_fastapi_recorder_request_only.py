@@ -72,7 +72,7 @@ class TestRequestOnlyCapture:
         collection_path = Path(temp_dir) / "test_api.json"
         assert collection_path.exists()
 
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         # Find the GET request
@@ -107,7 +107,7 @@ class TestRequestOnlyCapture:
 
         # Load the collection
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         # Find the POST request
@@ -131,7 +131,7 @@ class TestRequestOnlyCapture:
 
         # Load the collection
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         # Verify no response data
@@ -147,14 +147,14 @@ class TestRequestOnlyCapture:
         # Make a request to an endpoint that raises an exception
         try:
             client.get("/error")
-        except:
+        except Exception:
             pass
 
         # The request should still be recorded because recording happens BEFORE execution
         collection_path = Path(temp_dir) / "test_api.json"
         assert collection_path.exists()
 
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         # Find the error endpoint request
@@ -176,7 +176,7 @@ class TestCollectionStructure:
         client.get("/items/1")
 
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         # Verify collection structure
@@ -193,7 +193,7 @@ class TestCollectionStructure:
         client.get("/items/1", headers={"X-Custom-Header": "test-value"})
 
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         item = collection["item"][0]
@@ -213,7 +213,7 @@ class TestCollectionStructure:
         client.get("/items/42?q=test&limit=10")
 
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         item = collection["item"][0]
@@ -263,7 +263,7 @@ class TestCollectionStructure:
                 # The recorder may not capture if Request object wasn't accessible
                 pytest.skip("Collection file not created - Request object may not be accessible")
 
-            with open(collection_path, 'r') as f:
+            with open(collection_path) as f:
                 collection = json.load(f)
 
             # Find POST request
@@ -291,7 +291,7 @@ class TestMultipleRequests:
         client.get("/items/3")
 
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         # All GET requests should update the same endpoint entry
@@ -334,7 +334,7 @@ class TestMultipleRequests:
             client.delete("/test")
 
             collection_path = Path(tmpdir) / "methods_test.json"
-            with open(collection_path, 'r') as f:
+            with open(collection_path) as f:
                 collection = json.load(f)
 
             # Verify that requests were recorded
@@ -354,14 +354,14 @@ class TestMultipleRequests:
         client.get("/items/1")
         assert collection_path.exists()
 
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection_v1 = json.load(f)
         count_v1 = len(collection_v1["item"])
 
         # Second request (different endpoint)
         client.post("/items", params={"name": "test"})
 
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection_v2 = json.load(f)
         count_v2 = len(collection_v2["item"])
 
@@ -381,7 +381,7 @@ class TestPerformanceOptimizations:
         assert response.status_code == 200
 
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         # Verify no response body is stored
@@ -425,7 +425,7 @@ class TestEdgeCases:
         collection_path = Path(temp_dir) / "simple_endpoint.json"
         assert collection_path.exists()
 
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         assert len(collection["item"]) > 0
@@ -437,7 +437,7 @@ class TestEdgeCases:
         client.get("/items/999")
 
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         item = next(
@@ -453,7 +453,7 @@ class TestEdgeCases:
         client.get("/items/1")
 
         collection_path = Path(temp_dir) / "test_api.json"
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
 
         item = collection["item"][0]

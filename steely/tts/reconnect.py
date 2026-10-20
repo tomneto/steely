@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import random
-from typing import Tuple, Type
 
 from steely.tts.errors import TTSConnectionError
 
@@ -50,7 +49,7 @@ class ReconnectPolicy:
         backoff: float = 2.0,
         max_delay: float = 10.0,
         jitter: float = 0.3,
-        retryable_excs: Tuple[Type[BaseException], ...] = (TTSConnectionError,),
+        retryable_excs: tuple[type[BaseException], ...] = (TTSConnectionError,),
         sleep=None,
     ) -> None:
         self.max_retries = max_retries

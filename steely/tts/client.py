@@ -18,7 +18,7 @@ provider's optional SDK until that provider is actually requested.
 from __future__ import annotations
 
 import importlib
-from typing import Any, Optional, Union
+from typing import Any
 
 from steely.tts.base import TTSProvider, TTSSession
 from steely.tts.config import TTSConfig
@@ -45,7 +45,7 @@ class TTSClient:
         (credentials, base_url, ...).
     """
 
-    def __init__(self, provider: Union[str, TTSProvider], **kwargs: Any) -> None:
+    def __init__(self, provider: str | TTSProvider, **kwargs: Any) -> None:
         if isinstance(provider, TTSProvider):
             self._provider = provider
         elif isinstance(provider, str):
@@ -71,9 +71,9 @@ class TTSClient:
 
     async def open_session(
         self,
-        config: Optional[TTSConfig] = None,
+        config: TTSConfig | None = None,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> TTSSession:
         """Open a streaming synthesis session via the underlying provider.
@@ -88,7 +88,7 @@ class TTSClient:
     async def synthesize(
         self,
         text: str,
-        config: Optional[TTSConfig] = None,
+        config: TTSConfig | None = None,
         **kwargs: Any,
     ) -> bytes:
         """One-shot: synthesize ``text`` and return the full audio bytes."""

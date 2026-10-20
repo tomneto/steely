@@ -24,7 +24,26 @@ The FastAPI Postman recorder decorator has been modified to operate in **request
    - Faster recording with reduced I/O operations
    - Uses `pprint` for debug output instead of complex logging
 
-4. **Code Cleanup** ✅
+4. **Credential Redaction** ✅ *(default-on)*
+   - Sensitive headers (`Authorization`, `Cookie`, `Set-Cookie`,
+     `Proxy-Authorization`, `X-API-Key`, `API-Key`, `X-Auth-Token`) are stored as
+     `***` — case-insensitive match
+   - JSON body values under sensitive keys (`password`, `token`, `secret`,
+     `api_key`, `credit_card`, `cvv`, …) are stored as `"***"`, nested
+     objects/arrays included
+   - Redaction runs inside `record_request()`, so nothing sensitive is ever
+     serialized into the collection file
+   - Knobs: `sensitive_headers={...}` overrides the header list,
+     `keep_sensitive_headers=True` opts back in to replayable auth,
+     `redact_body=False` records bodies verbatim
+
+5. **FastAPI is now an optional extra** ✅
+   - `pip install "steely[fastapi]"`; `import steely` never pulls FastAPI in
+   - `fastapi.Request` is resolved lazily, so importing the recorder module
+     without the extra is safe — using a decorator raises
+     `FastAPINotAvailableError` with the install hint
+
+6. **Code Cleanup** ✅
    - Removed unused `Response` import
    - Simplified `record_request()` method signature
    - Removed response-related parameters and logic
@@ -52,7 +71,7 @@ The FastAPI Postman recorder decorator has been modified to operate in **request
 
 #### TestCollectionStructure (4 tests)
 - ✅ Collection metadata validation
-- ✅ Request headers captured (excluding host, content-length)
+- ✅ Request headers captured (excluding host, content-length; credentials masked)
 - ✅ URL structure with protocol, host, path, query
 - ✅ JSON body formatting
 
@@ -196,12 +215,17 @@ Possible improvements:
 - Optional response capture mode (toggle flag)
 - Async background recording for zero overhead
 - Collection merging/deduplication
-- Custom filtering of headers/fields
+- Value-based (not just key-based) body redaction — e.g. detecting JWTs and
+  card numbers wherever they appear
 - Integration with OpenAPI schema
+
+Done since this document was first written:
+- ~~Custom filtering of headers/fields~~ → `sensitive_headers` / `redact_body`
 
 ## Questions?
 
 See:
 - `test/README_REQUEST_ONLY_TESTS.md` for test details
+- `test/test_recorder_redaction.py` for the redaction contract
 - `steely/fastapi/README.md` for usage guide
 - `examples/fastapi_postman_example.py` for examples

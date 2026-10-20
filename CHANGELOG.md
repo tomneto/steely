@@ -5,6 +5,86 @@ All notable changes to **steely** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses a four-segment `MAJOR.MINOR.PATCH.BUILD` version scheme.
 
+## [Unreleased]
+
+Hardening pass on security, performance, packaging and tooling.
+
+### Security
+
+- **The FastAPI recorders now redact credentials by default.** `steely.fastapi.recorder`
+  writes plain-text scripts and collections to disk, so before anything is
+  written it masks sensitive headers (`Authorization`, `Cookie`, `Set-Cookie`,
+  `Proxy-Authorization`, `X-API-Key`, `API-Key`, `X-Auth-Token`) and JSON body
+  values under sensitive keys (`password`, `token`, `secret`, `api_key`,
+  `credit_card`, `cvv`, …, nested structures included). New knobs on both
+  `curl()` and `postman()`: `sensitive_headers=`, `keep_sensitive_headers=True`
+  (opt back in to replayable auth) and `redact_body=False`.
+- **`build.sh` no longer contains the PyPI token.** It reads `$PYPI_TOKEN` from
+  the environment and fails loudly if unset. `.env` holds placeholders only, and
+  `.env.example` documents the variables.
+
+### Fixed
+
+- **`intercept_stdlib()` is now thread-safe.** Its installation was a series of
+  unguarded check-then-act pairs. Worst case, two threads both saw the
+  `dictConfig` patch as un-installed and the second captured the *already
+  patched* function as `_original_dictConfig` — `_patched_dictConfig` then
+  called itself, so every subsequent `logging.config.dictConfig()` call in the
+  process died with `RecursionError`. Concurrent callers could also build
+  several interception handlers and attach them to the same logger (duplicated
+  log lines), and `_reapply_handlers` iterated the intercepted-names set while
+  another thread mutated it. The whole installation now runs under one module
+  lock, always acquired *before* the `logging` module's own lock — a handler's
+  `emit()` never takes it, which keeps that ordering and rules out deadlock.
+
+- **The `log` decorator no longer swallows exceptions in sync functions.** The
+  sync wrapper logged `Function Failed` and then returned `None`, silently
+  converting a raised exception into a successful-looking `None` result, while
+  the async wrapper re-raised. Both now re-raise with a bare `raise`, so the
+  original traceback survives and the two paths behave identically. This matches
+  what the README always documented.
+
+### Changed
+
+- **`fastapi` is an optional extra**, not a hard dependency: `pip install "steely[fastapi]"`.
+  `import steely` never pulls FastAPI in, and the recorders resolve
+  `fastapi.Request` lazily — using a decorator without the extra raises
+  `FastAPINotAvailableError` with the install command. `twine` moved out of the
+  runtime dependencies into the dev group.
+- **Single source of truth for the version**: `__version__` in
+  `steely/__init__.py`, read by `pyproject.toml` via `[tool.hatch.version]`.
+  `setup.py` (stale, and carrying an invalid nested `install_requires`) was
+  deleted; hatchling via `pyproject.toml` is the only build path.
+- **`Logger` thread-safety is now real.** A per-instance `threading.Lock` guards
+  the file write, the console print and the callbacks, so concurrent threads no
+  longer interleave partial lines. Docstrings and the README no longer claim
+  logging happens on background threads — it is synchronous and thread-*safe*.
+
+### Performance
+
+- `cronos` and `scan` measure elapsed time with `time.perf_counter()` instead of
+  wall-clock `datetime.now()`, so timings survive clock adjustments (NTP, DST).
+- Screen clearing uses the ANSI sequence `\x1b[2J\x1b[H` instead of
+  `os.system('clear'|'cls')` — no subprocess per message.
+- `Logger.log()` makes one `strftime` call instead of two.
+- `GrafanaSink` caches Loki stream labels per `(level, owner, app)`, avoiding a
+  dict copy plus `json.dumps(sort_keys=True)` for every log entry.
+- `scan` compares container lengths (O(1)) before falling back to a deep
+  equality walk (O(n)) when tracking variable changes.
+
+### Tooling
+
+- **Ruff** is configured (`line-length = 100`, `E,F,I,UP,B,SIM`, py39 target) and
+  the codebase is clean against it.
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): lint, the test suite on
+  Python 3.9–3.13, and a wheel build + `twine check`, on every push and PR.
+- `[dependency-groups] dev` collects pytest, pytest-asyncio, ruff, twine and the
+  optional SDKs the suite needs; `[tool.pytest.ini_options]` sets `testpaths`
+  and `asyncio_mode = "auto"`.
+- `test_logger_performance.py` reported numbers instead of asserting them, so it
+  moved to `examples/benchmarks/logger_performance.py`. New
+  `test/test_recorder_redaction.py` covers the redaction contract.
+
 ## [1.0.3.0] — 2026-07-19
 
 The **streaming speech-to-text** release. `steely.stt` joins the multi-provider

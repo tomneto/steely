@@ -52,7 +52,7 @@ def test_postman_decorator_get_request(app, temp_dir):
     assert collection_path.exists()
 
     # Load and verify the collection
-    with open(collection_path, 'r') as f:
+    with open(collection_path) as f:
         collection = json.load(f)
 
     assert "info" in collection
@@ -81,7 +81,7 @@ def test_postman_decorator_post_request(app, temp_dir):
 
     # Load the collection
     collection_path = Path(temp_dir) / "test_collection.json"
-    with open(collection_path, 'r') as f:
+    with open(collection_path) as f:
         collection = json.load(f)
 
     # Find the POST request item
@@ -106,7 +106,7 @@ def test_postman_collection_update(app, temp_dir):
 
     # Load the collection
     collection_path = Path(temp_dir) / "test_collection.json"
-    with open(collection_path, 'r') as f:
+    with open(collection_path) as f:
         collection = json.load(f)
 
     # The endpoint should be recorded once, but with multiple response examples
@@ -141,7 +141,7 @@ def test_postman_decorator_without_request_param():
         assert collection_path.exists()
 
         # Verify request-only mode
-        with open(collection_path, 'r') as f:
+        with open(collection_path) as f:
             collection = json.load(f)
         assert collection["item"][0]["response"] == []
 

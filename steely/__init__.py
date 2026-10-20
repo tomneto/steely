@@ -39,14 +39,14 @@ MIT License
 """
 
 from steely.cronos import cronos
-from steely.email import EmailClient, EmailMessage, EmailResult
+from steely.email import Attachment, EmailClient, EmailMessage, EmailResult
 from steely.grafana import GrafanaSink
-from steely.logger import log, Logger
+from steely.logger import Logger, log
 from steely.pprint import pprint
 from steely.scan import scan
 from steely.stt import EventType, STTClient, STTConfig, STTEvent
 
-__version__ = "1.0.3.0"
+__version__ = "1.0.3.5"
 __author__ = "Steely Contributors"
 __all__ = [
     "Dan",
@@ -58,6 +58,7 @@ __all__ = [
     "GrafanaSink",
     "EmailClient",
     "EmailMessage",
+    "Attachment",
     "EmailResult",
     "STTClient",
     "STTConfig",

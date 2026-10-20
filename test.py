@@ -1,4 +1,5 @@
 import os
+
 from steely import Logger
 
 GRAFANA_URL = os.getenv("GRAFANA_URL")

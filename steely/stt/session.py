@@ -17,7 +17,8 @@ Each adapter only implements the backend-specific hooks (``_connect``,
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncIterator, Optional, Union
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.logger import Logger
 from steely.stt.audio.resample import to_backend_pcm
@@ -54,14 +55,14 @@ class QueueSession(STTSession):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         max_queue: int = 512,
     ) -> None:
         self._config = config
         self._reconnect = reconnect or ReconnectPolicy()
-        self._queue: "asyncio.Queue[Union[STTEvent, object]]" = asyncio.Queue(max_queue)
-        self._recv_task: Optional["asyncio.Task[None]"] = None
-        self._error: Optional[BaseException] = None
+        self._queue: asyncio.Queue[STTEvent | object] = asyncio.Queue(max_queue)
+        self._recv_task: asyncio.Task[None] | None = None
+        self._error: BaseException | None = None
         self._closed = False
         self._conn: Any = None
         self._resample_state: dict = {}
@@ -202,12 +203,12 @@ class CallbackQueueSession(QueueSession):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         max_queue: int = 512,
     ) -> None:
         super().__init__(config, reconnect=reconnect, max_queue=max_queue)
-        self._cb_queue: "asyncio.Queue[Any]" = asyncio.Queue()
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._cb_queue: asyncio.Queue[Any] = asyncio.Queue()
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def _start(self) -> None:
         self._loop = asyncio.get_running_loop()

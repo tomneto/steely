@@ -8,18 +8,16 @@ echoed back to the worker is always the canonical tag, never the provider code.
 """
 from __future__ import annotations
 
-from typing import Dict
-
 # Per-provider maps: canonical BCP-47 -> that provider's expected code.
-_DEEPGRAM: Dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt", "en-US": "en-US", "es-ES": "es"}
-_ASSEMBLYAI: Dict[str, str] = {"pt-BR": "pt", "pt": "pt", "en-US": "en", "es-ES": "es"}
-_GOOGLE: Dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
-_AZURE: Dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
-_AWS: Dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
+_DEEPGRAM: dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt", "en-US": "en-US", "es-ES": "es"}
+_ASSEMBLYAI: dict[str, str] = {"pt-BR": "pt", "pt": "pt", "en-US": "en", "es-ES": "es"}
+_GOOGLE: dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
+_AZURE: dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
+_AWS: dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
 # WhisperLive / faster-whisper uses Whisper's ISO-639-1 language codes.
-_WHISPERLIVE: Dict[str, str] = {"pt-BR": "pt", "pt": "pt", "en-US": "en", "es-ES": "es"}
+_WHISPERLIVE: dict[str, str] = {"pt-BR": "pt", "pt": "pt", "en-US": "en", "es-ES": "es"}
 
-_MAPS: Dict[str, Dict[str, str]] = {
+_MAPS: dict[str, dict[str, str]] = {
     "deepgram": _DEEPGRAM,
     "assemblyai": _ASSEMBLYAI,
     "google": _GOOGLE,

@@ -8,7 +8,8 @@ factory, and any consumer code without any SDK installed.
 """
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, List, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.tts.audio_chunk import AudioChunk
 from steely.tts.base import TTSProvider, TTSSession
@@ -16,7 +17,7 @@ from steely.tts.config import TTSConfig
 from steely.tts.reconnect import ReconnectPolicy
 
 
-def _default_script() -> List[AudioChunk]:
+def _default_script() -> list[AudioChunk]:
     return [
         AudioChunk(b"\x01\x02" * 80, index=0, is_final=False, duration_ms=100),
         AudioChunk(b"\x03\x04" * 80, index=1, is_final=False, duration_ms=100),
@@ -27,9 +28,9 @@ def _default_script() -> List[AudioChunk]:
 class FakeSession(TTSSession):
     """In-memory session: records pushed text, emits scripted audio chunks."""
 
-    def __init__(self, config: TTSConfig, script: Optional[List[AudioChunk]] = None) -> None:
+    def __init__(self, config: TTSConfig, script: list[AudioChunk] | None = None) -> None:
         self.config = config
-        self.pushed: List[str] = []
+        self.pushed: list[str] = []
         self.ended = False
         self.closed = False
         self._script = list(script) if script is not None else _default_script()
@@ -67,7 +68,7 @@ class FakeProvider(TTSProvider):
         short three-chunk sequence ending with ``is_final=True``.
     """
 
-    def __init__(self, script: Optional[List[AudioChunk]] = None, **_: Any) -> None:
+    def __init__(self, script: list[AudioChunk] | None = None, **_: Any) -> None:
         self._script = script
 
     @property
@@ -78,7 +79,7 @@ class FakeProvider(TTSProvider):
         self,
         config: TTSConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> TTSSession:
         return FakeSession(config, self._script)

@@ -62,6 +62,16 @@ A new `@curl` decorator for FastAPI that automatically generates executable curl
 - ✅ Captures even if endpoint fails/crashes
 - ✅ Guaranteed documentation of all requests
 
+### Credential Redaction (on by default)
+- ✅ `Authorization`, `Cookie`, `Set-Cookie`, `Proxy-Authorization`, `X-API-Key`,
+  `API-Key`, `X-Auth-Token` written as `***` (case-insensitive)
+- ✅ JSON body values under sensitive keys (`password`, `token`, `secret`,
+  `api_key`, `credit_card`, `cvv`, …) written as `"***"`, nested objects/arrays included
+- ✅ `sensitive_headers={...}` to override the header list
+- ✅ `keep_sensitive_headers=True` to opt back in to replayable auth
+- ✅ `redact_body=False` to record bodies verbatim
+- ✅ Redaction happens in `record_request()`, before anything touches the disk
+
 ### Curl Command Generation
 - ✅ Proper shell escaping for quotes and special chars
 - ✅ Multi-line format with `\` continuations
@@ -196,6 +206,7 @@ curl -X POST "http://localhost:8000/users" \
 ### 1. Request-Only Capture
 - **No response data** stored or processed
 - Only captures: method, URL, headers, query params, body
+- Credentials in those headers/bodies are redacted before writing
 - Zero overhead from response interpretation
 
 ### 2. Pre-Execution Recording
@@ -293,16 +304,19 @@ async def get_latest():
 ### Programmatic Usage
 
 ```python
-from steely.fastapi import recorderRecorder
+from steely.fastapi.recorder import CurlRecorder
 
 recorder = CurlRecorder("my_api")
 recorder.record_request(
     method="GET",
     url="http://api.example.com/data",
-    headers={"Authorization": "Bearer token"},
+    headers={"Authorization": "Bearer token"},  # written as: -H "Authorization: ***"
     body=None,
     path="/data"
 )
+
+# Opt out of redaction (token then lands in the script in cleartext):
+raw = CurlRecorder("my_api_raw", redact_headers=False, redact_body=False)
 ```
 
 ## ✨ Benefits
@@ -315,6 +329,7 @@ recorder.record_request(
 6. **Documentation**: Generate API examples automatically
 7. **Performance**: No overhead from response capture
 8. **Reliability**: Captures even failed requests
+9. **Safe by Default**: Credentials redacted before the script is written
 
 ## 📦 What's Included
 

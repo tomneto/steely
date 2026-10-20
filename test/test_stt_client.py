@@ -2,7 +2,7 @@
 
 import pytest
 
-from steely.stt import STTClient, STTConfig, STTEvent, EventType
+from steely.stt import EventType, STTClient, STTConfig, STTEvent
 from steely.stt.base import STTProvider
 from steely.stt.languages import to_provider_language
 from steely.stt.providers.fake import FakeProvider, FakeSession

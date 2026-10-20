@@ -73,11 +73,11 @@ Notes
 import asyncio
 import inspect
 import sys
+import time
 from functools import wraps
-from datetime import datetime
-from typing import Any, Dict, Optional, Set
+from typing import Any, Optional
 
-from steely.design import UnicodeColors, TypeColors, Symbols
+from steely.design import Symbols, TypeColors, UnicodeColors
 
 __all__ = ["scan", "ScanPrinter", "VariableTracker"]
 
@@ -122,11 +122,15 @@ class ScanPrinter:
         module : str
             The module name where the function is defined.
         """
-        width = 60
+        c, sym, width = cls.C, cls.S, 60
         print()
-        print(f"{cls.C.bright_cyan}{cls.S.BOX_TL}{cls.S.BOX_H * (width - 2)}{cls.S.BOX_TR}{cls.C.reset}")
-        print(f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset} {cls.S.SCAN} {cls.C.bold}{cls.C.bright_yellow}SCAN{cls.C.reset} {cls.C.dim}│{cls.C.reset} {cls.C.bright_white}{func_name}{cls.C.reset} {cls.C.dim}@ {module}{cls.C.reset}")
-        print(f"{cls.C.bright_cyan}{cls.S.BOX_L}{cls.S.BOX_H * (width - 2)}{cls.S.BOX_R}{cls.C.reset}")
+        print(f"{c.bright_cyan}{sym.BOX_TL}{sym.BOX_H * (width - 2)}{sym.BOX_TR}{c.reset}")
+        print(
+            f"{c.bright_cyan}{sym.BOX_V}{c.reset} {sym.SCAN} "
+            f"{c.bold}{c.bright_yellow}SCAN{c.reset} {c.dim}│{c.reset} "
+            f"{c.bright_white}{func_name}{c.reset} {c.dim}@ {module}{c.reset}"
+        )
+        print(f"{c.bright_cyan}{sym.BOX_L}{sym.BOX_H * (width - 2)}{sym.BOX_R}{c.reset}")
 
     @classmethod
     def signature(cls, sig: inspect.Signature, args: tuple, kwargs: dict, param_names: list):
@@ -154,7 +158,10 @@ class ScanPrinter:
         bound_args.update(kwargs)
 
         if not bound_args:
-            print(f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset}   {cls.C.dim}(no parameters){cls.C.reset}")
+            print(
+                f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset}   "
+                f"{cls.C.dim}(no parameters){cls.C.reset}"
+            )
         else:
             for name, value in bound_args.items():
                 cls._print_variable(name, value, prefix="   ")
@@ -208,7 +215,14 @@ class ScanPrinter:
         return t
 
     @classmethod
-    def _print_variable(cls, name: str, value: Any, prefix: str = "", is_new: bool = True, line_no: Optional[int] = None):
+    def _print_variable(
+        cls,
+        name: str,
+        value: Any,
+        prefix: str = "",
+        is_new: bool = True,
+        line_no: Optional[int] = None,
+    ):
         """
         Print a single variable with beautiful colored formatting.
 
@@ -286,7 +300,7 @@ class ScanPrinter:
         cls._print_variable(name, value, prefix=" ", is_new=True, line_no=line_no)
 
     @classmethod
-    def locals_snapshot(cls, local_vars: Dict[str, Any], title: str = "Local Variables"):
+    def locals_snapshot(cls, local_vars: dict[str, Any], title: str = "Local Variables"):
         """
         Print a snapshot of all local variables.
 
@@ -324,7 +338,8 @@ class ScanPrinter:
         type_name = cls._get_type_name(value)
         formatted_val = cls._format_value(value)
 
-        print(f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset} {cls.S.RETURN} {cls.C.bright_green}return{cls.C.reset} "
+        print(f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset} {cls.S.RETURN} "
+              f"{cls.C.bright_green}return{cls.C.reset} "
               f"{cls.C.dim}:{cls.C.reset} "
               f"{cls.C.yellow}{type_name}{cls.C.reset} "
               f"{cls.C.dim}={cls.C.reset} "
@@ -341,7 +356,8 @@ class ScanPrinter:
             The exception that was raised.
         """
         print(f"{cls.C.bright_cyan}{cls.S.BOX_L}{cls.S.BOX_H * 58}{cls.S.BOX_R}{cls.C.reset}")
-        print(f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset} {cls.S.CROSS} {cls.C.bright_red}Exception{cls.C.reset} "
+        print(f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset} {cls.S.CROSS} "
+              f"{cls.C.bright_red}Exception{cls.C.reset} "
               f"{cls.C.dim}:{cls.C.reset} "
               f"{cls.C.yellow}{type(exc).__name__}{cls.C.reset} "
               f"{cls.C.dim}-{cls.C.reset} "
@@ -358,10 +374,43 @@ class ScanPrinter:
             The elapsed time in milliseconds.
         """
         print(f"{cls.C.bright_cyan}{cls.S.BOX_L}{cls.S.BOX_H * 58}{cls.S.BOX_R}{cls.C.reset}")
-        print(f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset} {cls.S.CHECK} {cls.C.dim}Completed in{cls.C.reset} "
+        print(f"{cls.C.bright_cyan}{cls.S.BOX_V}{cls.C.reset} {cls.S.CHECK} "
+              f"{cls.C.dim}Completed in{cls.C.reset} "
               f"{cls.C.bright_green}{elapsed_ms:.3f}ms{cls.C.reset}")
         print(f"{cls.C.bright_cyan}{cls.S.BOX_BL}{cls.S.BOX_H * 58}{cls.S.BOX_BR}{cls.C.reset}")
         print()
+
+
+_SIZED_TYPES = (list, dict, set, tuple, frozenset, str, bytes)
+
+
+def _differs_in_length(old_val: Any, new_val: Any) -> bool:
+    """
+    Cheap O(1) inequality check for sized containers.
+
+    Two containers of the same type but different lengths cannot be equal, so a
+    length mismatch lets the caller skip the O(n) deep comparison entirely.
+
+    Parameters
+    ----------
+    old_val, new_val : any
+        Values being compared.
+
+    Returns
+    -------
+    bool
+        True only when both values are same-type sized containers whose lengths
+        differ (i.e. they are provably unequal). False means "inconclusive —
+        compare properly".
+    """
+    if type(old_val) is not type(new_val):
+        return False
+    if not isinstance(old_val, _SIZED_TYPES):
+        return False
+    try:
+        return len(old_val) != len(new_val)
+    except TypeError:
+        return False
 
 
 class VariableTracker:
@@ -398,8 +447,8 @@ class VariableTracker:
 
     def __init__(self, target_func_code):
         self.target_code = target_func_code
-        self.previous_locals: Dict[str, Any] = {}
-        self.tracked_names: Set[str] = set()
+        self.previous_locals: dict[str, Any] = {}
+        self.tracked_names: set[str] = set()
         self.changes: list = []
         self.active = False
 
@@ -480,8 +529,13 @@ class VariableTracker:
                 elif name in self.previous_locals:
                     old_val = self.previous_locals[name]
                     try:
-                        # Check if value changed (handle unhashable types)
-                        if old_val is not value and old_val != value:
+                        # Check if value changed (handle unhashable types).
+                        # For sized containers, an O(1) length mismatch settles
+                        # the comparison without an O(n) deep walk.
+                        if old_val is not value and (
+                            _differs_in_length(old_val, value)
+                            or old_val != value
+                        ):
                             self.changes.append(('change', name, old_val, value, line_no))
                             ScanPrinter.variable_change(name, old_val, value, line_no)
                     except (TypeError, ValueError):
@@ -606,7 +660,7 @@ def scan(func):
     if asyncio.iscoroutinefunction(func):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            start = datetime.now()
+            start = time.perf_counter()
 
             # Print header
             ScanPrinter.header(func.__name__, module_name)
@@ -616,7 +670,8 @@ def scan(func):
             # because it traces the entire event loop. Variable tracking
             # is disabled for async functions.
             print(f"{ScanPrinter.C.bright_cyan}{ScanPrinter.S.BOX_V}{ScanPrinter.C.reset} "
-                  f"{ScanPrinter.C.dim}(async function - variable tracking disabled){ScanPrinter.C.reset}")
+                  f"{ScanPrinter.C.dim}(async function - variable tracking "
+                  f"disabled){ScanPrinter.C.reset}")
 
             try:
                 result = await func(*args, **kwargs)
@@ -626,7 +681,7 @@ def scan(func):
                 ScanPrinter.exception(e)
                 raise
             finally:
-                elapsed = (datetime.now() - start).total_seconds() * 1000
+                elapsed = (time.perf_counter() - start) * 1000
                 ScanPrinter.footer(elapsed)
 
         async_wrapper.__signature__ = sig
@@ -634,7 +689,7 @@ def scan(func):
     else:
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
-            start = datetime.now()
+            start = time.perf_counter()
 
             # Print header
             ScanPrinter.header(func.__name__, module_name)
@@ -656,7 +711,7 @@ def scan(func):
             finally:
                 sys.settrace(old_trace)
                 tracker.active = False
-                elapsed = (datetime.now() - start).total_seconds() * 1000
+                elapsed = (time.perf_counter() - start) * 1000
                 ScanPrinter.footer(elapsed)
 
         sync_wrapper.__signature__ = sig

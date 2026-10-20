@@ -39,9 +39,11 @@ import json
 import os
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-from fastapi import Request
+from steely.fastapi.recorder._compat import require_request
+from steely.fastapi.recorder._redact import redact_body as _redact_body
+from steely.fastapi.recorder._redact import redact_headers
 
 __all__ = ["postman", "PostmanRecorder"]
 
@@ -60,6 +62,13 @@ class PostmanRecorder:
         Name of the Postman collection (typically the function name)
     output_dir : str, optional
         Directory to store collection files. Default is './.postman_collections'
+    sensitive_headers : set of str, optional
+        Header names to mask. Defaults to
+        :data:`steely.fastapi.recorder._redact.SENSITIVE_HEADERS`.
+    redact_headers : bool, optional
+        Mask sensitive headers. Default is True.
+    redact_body : bool, optional
+        Mask sensitive keys in JSON bodies. Default is True.
 
     Attributes
     ----------
@@ -71,10 +80,20 @@ class PostmanRecorder:
         Full path to the collection JSON file
     """
 
-    def __init__(self, collection_name: str, output_dir: str = "./.postman_collections"):
+    def __init__(
+        self,
+        collection_name: str,
+        output_dir: str = "./.postman_collections",
+        sensitive_headers: Optional[set[str]] = None,
+        redact_headers: bool = True,
+        redact_body: bool = True,
+    ):
         self.collection_name = collection_name
         self.output_dir = output_dir
         self.collection_path = os.path.join(output_dir, f"{collection_name}.json")
+        self.sensitive_headers = sensitive_headers
+        self.redact_headers = redact_headers
+        self.redact_body = redact_body
 
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
@@ -85,7 +104,7 @@ class PostmanRecorder:
     def _init_collection(self):
         """Initialize a new collection or load existing one."""
         if os.path.exists(self.collection_path):
-            with open(self.collection_path, 'r') as f:
+            with open(self.collection_path) as f:
                 self.collection = json.load(f)
         else:
             self.collection = {
@@ -93,7 +112,10 @@ class PostmanRecorder:
                     "name": self.collection_name,
                     "description": f"Auto-generated collection for {self.collection_name}",
                     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-                    "_postman_id": f"{self.collection_name}-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    "_postman_id": (
+                        f"{self.collection_name}-"
+                        f"{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                    ),
                 },
                 "item": []
             }
@@ -107,8 +129,8 @@ class PostmanRecorder:
         self,
         method: str,
         url: str,
-        headers: Dict[str, str],
-        query_params: Dict[str, Any],
+        headers: dict[str, str],
+        query_params: dict[str, Any],
         body: Optional[Any],
         path: str
     ):
@@ -129,7 +151,15 @@ class PostmanRecorder:
             Request body
         path : str
             Endpoint path pattern
+
+        Notes
+        -----
+        Credentials are stripped here, before anything touches the disk.
         """
+        headers = redact_headers(
+            headers, self.sensitive_headers, enabled=self.redact_headers
+        )
+        body = _redact_body(body, enabled=self.redact_body)
 
         # Build Postman request item
         item = {
@@ -210,7 +240,10 @@ class PostmanRecorder:
 
 def postman(
     output_dir: str = "./.postman_collections",
-    collection_name: Optional[str] = None
+    collection_name: Optional[str] = None,
+    sensitive_headers: Optional[set[str]] = None,
+    keep_sensitive_headers: bool = False,
+    redact_body: bool = True,
 ):
     """
     Decorator that records FastAPI endpoint requests/responses to Postman collections.
@@ -225,6 +258,18 @@ def postman(
         Directory to store Postman collection files. Default is './.postman_collections'
     collection_name : str, optional
         Custom name for the collection. If not provided, uses the function name.
+    sensitive_headers : set of str, optional
+        Header names to mask instead of the built-in list
+        (``authorization``, ``cookie``, ``set-cookie``, ``proxy-authorization``,
+        ``x-api-key``, ``api-key``, ``x-auth-token``). Matching is
+        case-insensitive.
+    keep_sensitive_headers : bool, optional
+        Write credential headers verbatim into the collection. Only set this
+        when the collection really must replay authentication — the file is
+        plain JSON on disk. Default is False (headers are masked as ``***``).
+    redact_body : bool, optional
+        Mask values of sensitive-looking JSON keys (``password``, ``token``,
+        ``secret``, ``api_key``, ``credit_card``, …). Default is True.
 
     Returns
     -------
@@ -272,14 +317,25 @@ def postman(
     - Each request/response is saved as an example in the Postman collection.
     - The decorator preserves the original function signature for FastAPI compatibility.
     - Works with both sync and async FastAPI endpoints.
+    - Credential headers and sensitive body keys are redacted by default; see
+      ``keep_sensitive_headers`` / ``redact_body`` to change that.
+    - Requires the optional FastAPI extra: ``pip install "steely[fastapi]"``.
     """
     def decorator(func):
+        request_cls = require_request()
+
         coll_name = collection_name if collection_name else func.__name__
-        recorder: PostmanRecorder = PostmanRecorder(coll_name, output_dir)
+        recorder: PostmanRecorder = PostmanRecorder(
+            coll_name,
+            output_dir,
+            sensitive_headers=sensitive_headers,
+            redact_headers=not keep_sensitive_headers,
+            redact_body=redact_body,
+        )
 
         sig = inspect.signature(func)
         has_request_param = any(
-            param.annotation == Request or param.name == "request"
+            param.annotation is request_cls or param.name == "request"
             for param in sig.parameters.values()
         )
 
@@ -290,7 +346,7 @@ def postman(
                 request = kwargs.get('request')
                 if request is None:
                     for arg in args:
-                        if isinstance(arg, Request):
+                        if isinstance(arg, request_cls):
                             request = arg
                             break
 
@@ -333,7 +389,9 @@ def postman(
 
             if not has_request_param:
                 params = list(sig.parameters.values())
-                params.append(inspect.Parameter('request', inspect.Parameter.KEYWORD_ONLY, annotation=Request))
+                params.append(inspect.Parameter(
+                    'request', inspect.Parameter.KEYWORD_ONLY, annotation=request_cls
+                ))
                 async_wrapper.__signature__ = sig.replace(parameters=params)
             else:
                 async_wrapper.__signature__ = sig
@@ -345,7 +403,7 @@ def postman(
                 request = kwargs.get('request')
                 if request is None:
                     for arg in args:
-                        if isinstance(arg, Request):
+                        if isinstance(arg, request_cls):
                             request = arg
                             break
 
@@ -384,7 +442,9 @@ def postman(
 
             if not has_request_param:
                 params = list(sig.parameters.values())
-                params.append(inspect.Parameter('request', inspect.Parameter.KEYWORD_ONLY, annotation=Request))
+                params.append(inspect.Parameter(
+                    'request', inspect.Parameter.KEYWORD_ONLY, annotation=request_cls
+                ))
                 sync_wrapper.__signature__ = sig.replace(parameters=params)
             else:
                 sync_wrapper.__signature__ = sig

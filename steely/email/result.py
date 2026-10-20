@@ -12,7 +12,7 @@ can adapt without reaching into fields.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 
 @dataclass
@@ -38,11 +38,11 @@ class EmailResult:
     success: bool
     message: str
     provider: str
-    message_id: Optional[str] = None
-    status_code: Optional[int] = None
-    raw: Optional[Dict[str, Any]] = None
+    message_id: str | None = None
+    status_code: int | None = None
+    raw: dict[str, Any] | None = None
 
-    def as_tuple(self) -> Tuple[bool, str, Optional[str]]:
+    def as_tuple(self) -> tuple[bool, str, str | None]:
         """Return ``(success, message, message_id)``."""
         return (self.success, self.message, self.message_id)
 

@@ -13,7 +13,8 @@ hooks, and register it in ``steely.tts.client._FACTORY``.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.tts.audio_chunk import AudioChunk
 from steely.tts.config import TTSConfig
@@ -46,9 +47,9 @@ class TTSProvider(ABC):
         self,
         config: TTSConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
-    ) -> "TTSSession":
+    ) -> TTSSession:
         """Open a live synthesis session.
 
         Returns a *connected* :class:`TTSSession` ready to receive text via
@@ -120,7 +121,7 @@ class TTSSession(ABC):
     async def __anext__(self) -> AudioChunk:
         ...
 
-    async def __aenter__(self) -> "TTSSession":
+    async def __aenter__(self) -> TTSSession:
         return self
 
     async def __aexit__(self, *exc: Any) -> None:

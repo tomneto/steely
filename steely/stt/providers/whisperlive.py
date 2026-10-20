@@ -35,7 +35,8 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from typing import Any, AsyncIterator, Optional, Set, Tuple
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.stt.audio.resample import pcm16le_to_float32le
 from steely.stt.base import STTProvider, STTSession, redact
@@ -62,14 +63,14 @@ class WhisperLiveSession(QueueSession):
     BACKEND_RATE = 16000
     BACKEND_ENCODING = "pcm_s16le"  # converted to float32 in _send_bytes
 
-    def __init__(self, provider: "WhisperLiveProvider", config: STTConfig, **opts: Any) -> None:
+    def __init__(self, provider: WhisperLiveProvider, config: STTConfig, **opts: Any) -> None:
         super().__init__(config, reconnect=opts.pop("reconnect", None))
         self._provider = provider
         self._opts = opts
         self._uid = uuid.uuid4().hex
         # Keys of completed segments already emitted, so re-sent segment lists
         # don't produce duplicate finals.
-        self._emitted_finals: Set[Tuple[int, str]] = set()
+        self._emitted_finals: set[tuple[int, str]] = set()
 
     async def _connect(self, config: STTConfig) -> Any:
         websockets = self._provider._ws
@@ -167,7 +168,7 @@ class WhisperLiveProvider(STTProvider):
         ``ws://localhost:9090``.
     """
 
-    def __init__(self, endpoint_url: Optional[str] = None, **_: Any) -> None:
+    def __init__(self, endpoint_url: str | None = None, **_: Any) -> None:
         self._url = endpoint_url or os.environ.get("WHISPERLIVE_URL", _DEFAULT_URL)
         try:
             import websockets
@@ -187,7 +188,7 @@ class WhisperLiveProvider(STTProvider):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> STTSession:
         session = WhisperLiveSession(self, config, reconnect=reconnect, **kwargs)

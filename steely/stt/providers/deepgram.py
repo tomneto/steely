@@ -12,7 +12,7 @@ handles pt-BR; the canonical ``"pt-BR"`` tag maps straight through.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from steely.stt.base import STTProvider, STTSession, redact
 from steely.stt.config import STTConfig
@@ -29,7 +29,7 @@ class DeepgramSession(CallbackQueueSession):
     BACKEND_RATE = 16000
     BACKEND_ENCODING = "pcm_s16le"
 
-    def __init__(self, provider: "DeepgramProvider", config: STTConfig, **opts: Any) -> None:
+    def __init__(self, provider: DeepgramProvider, config: STTConfig, **opts: Any) -> None:
         super().__init__(config, reconnect=opts.pop("reconnect", None))
         self._provider = provider
         self._opts = opts
@@ -104,7 +104,7 @@ class DeepgramProvider(STTProvider):
         Deepgram API key. Falls back to ``DEEPGRAM_API_KEY``.
     """
 
-    def __init__(self, api_key: Optional[str] = None, **_: Any) -> None:
+    def __init__(self, api_key: str | None = None, **_: Any) -> None:
         key = api_key or os.environ.get("DEEPGRAM_API_KEY")
         if not key:
             raise STTConfigError("DeepgramProvider requires an api_key or DEEPGRAM_API_KEY")
@@ -130,7 +130,7 @@ class DeepgramProvider(STTProvider):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> STTSession:
         session = DeepgramSession(self, config, reconnect=reconnect, **kwargs)

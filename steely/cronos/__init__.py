@@ -48,7 +48,8 @@ Combining with other decorators:
 
 import asyncio
 import inspect
-from datetime import datetime
+import time
+from datetime import timedelta
 from functools import wraps
 
 from steely.logger import Logger
@@ -125,8 +126,9 @@ def cronos(func):
       any I/O waits, sleep calls, or blocking operations.
     - The original function signature is preserved for compatibility with
       frameworks like FastAPI that rely on signature introspection.
-    - The timing is always logged via a background thread for non-blocking
-      behavior.
+    - The elapsed time is measured with :func:`time.perf_counter`, a monotonic
+      clock, so it is immune to system clock adjustments (NTP, DST).
+    - The timing is logged synchronously, inline, when the function returns.
     - For async functions, the time includes await durations.
 
     See Also
@@ -139,11 +141,11 @@ def cronos(func):
     if asyncio.iscoroutinefunction(func):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            start = datetime.now()
+            start = time.perf_counter()
             try:
                 res = await func(*args, **kwargs)
             finally:
-                time_elapsed = datetime.now() - start
+                time_elapsed = timedelta(seconds=time.perf_counter() - start)
                 log('TEST-RESULT', f'Total Time Elapsed: {time_elapsed}')
             return res
 
@@ -153,11 +155,11 @@ def cronos(func):
     else:
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
-            start = datetime.now()
+            start = time.perf_counter()
             try:
                 res = func(*args, **kwargs)
             finally:
-                time_elapsed = datetime.now() - start
+                time_elapsed = timedelta(seconds=time.perf_counter() - start)
                 log('TEST-RESULT', f'Total Time Elapsed: {time_elapsed}')
             return res
 

@@ -9,16 +9,14 @@ pass-through.
 """
 from __future__ import annotations
 
-from typing import Dict
-
 # Per-provider maps: canonical BCP-47 -> that provider's expected code.
 # ElevenLabs and OpenAI infer language from the voice/model, so they are absent
 # here and fall through unchanged.
-_GOOGLE: Dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
-_AZURE: Dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
-_AWS: Dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
+_GOOGLE: dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
+_AZURE: dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
+_AWS: dict[str, str] = {"pt-BR": "pt-BR", "pt": "pt-BR", "en-US": "en-US", "es-ES": "es-ES"}
 
-_MAPS: Dict[str, Dict[str, str]] = {
+_MAPS: dict[str, dict[str, str]] = {
     "google": _GOOGLE,
     "azure": _AZURE,
     "aws": _AWS,

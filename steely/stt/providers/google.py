@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.stt.base import STTProvider, STTSession, redact
 from steely.stt.config import STTConfig
@@ -38,11 +39,11 @@ class GoogleSession(QueueSession):
     BACKEND_RATE = 16000
     BACKEND_ENCODING = "pcm_s16le"
 
-    def __init__(self, provider: "GoogleProvider", config: STTConfig, **opts: Any) -> None:
+    def __init__(self, provider: GoogleProvider, config: STTConfig, **opts: Any) -> None:
         super().__init__(config, reconnect=opts.pop("reconnect", None))
         self._provider = provider
         self._opts = opts
-        self._audio: "asyncio.Queue[Any]" = asyncio.Queue()
+        self._audio: asyncio.Queue[Any] = asyncio.Queue()
 
     async def _requests(self, streaming_config: Any) -> AsyncIterator[Any]:
         speech = self._provider._speech
@@ -136,7 +137,7 @@ class GoogleProvider(STTProvider):
         ``GOOGLE_APPLICATION_CREDENTIALS`` so ADC picks it up.
     """
 
-    def __init__(self, credentials_path: Optional[str] = None, **_: Any) -> None:
+    def __init__(self, credentials_path: str | None = None, **_: Any) -> None:
         if credentials_path:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
         try:
@@ -151,7 +152,9 @@ class GoogleProvider(STTProvider):
         except Exception as exc:  # noqa: BLE001 - missing/invalid credentials
             raise STTConfigError(f"Google credentials not usable: {exc}") from exc
         self._speech = speech
-        self._redacted = redact(credentials_path or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+        self._redacted = redact(
+            credentials_path or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        )
 
     @property
     def name(self) -> str:
@@ -161,7 +164,7 @@ class GoogleProvider(STTProvider):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> STTSession:
         session = GoogleSession(self, config, reconnect=reconnect, **kwargs)

@@ -37,7 +37,8 @@ so pass a ``request_body`` builder::
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Iterable, Optional, Union
+from collections.abc import Iterable
+from typing import Any, Callable, Optional
 
 from steely.email.errors import ProviderNotAvailableError
 from steely.email.message import EmailMessage
@@ -46,7 +47,7 @@ from steely.email.result import EmailResult
 from steely.email.retry import RetryableError, with_retry
 from steely.logger import Logger
 
-BodyBuilder = Callable[[EmailMessage, Optional[str]], Dict[str, Any]]
+BodyBuilder = Callable[[EmailMessage, Optional[str]], dict[str, Any]]
 
 
 class HTTPAPIProvider(EmailProvider):
@@ -87,12 +88,12 @@ class HTTPAPIProvider(EmailProvider):
         self,
         endpoint_url: str,
         api_key: str,
-        from_email: Optional[str] = None,
-        request_body: Union[Dict[str, Any], BodyBuilder, None] = None,
-        auth_header: Optional[str] = "Authorization",
-        auth_scheme: Optional[str] = "Bearer",
+        from_email: str | None = None,
+        request_body: dict[str, Any] | BodyBuilder | None = None,
+        auth_header: str | None = "Authorization",
+        auth_scheme: str | None = "Bearer",
         method: str = "POST",
-        extra_headers: Optional[Dict[str, str]] = None,
+        extra_headers: dict[str, str] | None = None,
         timeout: int = 30,
         max_attempts: int = 3,
         success_codes: Iterable[int] = range(200, 300),
@@ -125,8 +126,8 @@ class HTTPAPIProvider(EmailProvider):
     def name(self) -> str:
         return "api"
 
-    def _default_body(self, message: EmailMessage, sender: Optional[str]) -> Dict[str, Any]:
-        body: Dict[str, Any] = {"from": sender, "to": message.to, "subject": message.subject}
+    def _default_body(self, message: EmailMessage, sender: str | None) -> dict[str, Any]:
+        body: dict[str, Any] = {"from": sender, "to": message.to, "subject": message.subject}
         if message.body_html:
             body["html"] = message.body_html
         if message.body_text:
@@ -141,7 +142,7 @@ class HTTPAPIProvider(EmailProvider):
             body["headers"] = message.headers
         return body
 
-    def _build_body(self, message: EmailMessage, from_email: Optional[str]) -> Dict[str, Any]:
+    def _build_body(self, message: EmailMessage, from_email: str | None) -> dict[str, Any]:
         sender = message.from_email or from_email or self.from_email
         if callable(self.request_body):
             return self.request_body(message, sender)
@@ -150,7 +151,7 @@ class HTTPAPIProvider(EmailProvider):
         return self._default_body(message, sender)
 
     def send(
-        self, message: EmailMessage, from_email: Optional[str] = None, **kwargs: Any
+        self, message: EmailMessage, from_email: str | None = None, **kwargs: Any
     ) -> EmailResult:
         body = self._build_body(message, from_email)
         headers = {"Content-Type": "application/json"}

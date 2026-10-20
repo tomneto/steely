@@ -54,7 +54,9 @@ def _make_handler(state):
 
         def do_GET(self):
             with state.lock:
-                state.requests.append({"method": "GET", "path": self.path, "headers": dict(self.headers)})
+                state.requests.append(
+                    {"method": "GET", "path": self.path, "headers": dict(self.headers)}
+                )
             self._respond()
 
         def log_message(self, *args):
@@ -88,7 +90,9 @@ def _provider(server, **kwargs):
 
 
 def _msg():
-    return EmailMessage(to=["dest@example.com"], subject="Hi", body_html="<p>Hi</p>", body_text="Hi")
+    return EmailMessage(
+        to=["dest@example.com"], subject="Hi", body_html="<p>Hi</p>", body_text="Hi"
+    )
 
 
 def test_redact_never_exposes_full_secret():

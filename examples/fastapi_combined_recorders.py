@@ -19,7 +19,7 @@ You'll get:
 
 from fastapi import FastAPI
 
-from steely.fastapi import recorder, postman
+from steely.fastapi import recorder
 
 app = FastAPI(title="Combined Recorders Demo")
 

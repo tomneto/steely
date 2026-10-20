@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class EventType(str, Enum):
@@ -52,10 +52,10 @@ class STTEvent:
     text: str
     start: int
     end: int
-    speaker: Optional[str] = None
-    confidence: Optional[float] = None
-    language: Optional[str] = None
-    raw: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    speaker: str | None = None
+    confidence: float | None = None
+    language: str | None = None
+    raw: dict[str, Any] | None = field(default=None, repr=False)
 
     @property
     def is_final(self) -> bool:

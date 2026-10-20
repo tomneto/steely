@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, Optional
+from typing import Any
 
 from steely.stt.base import STTProvider, STTSession, redact
 from steely.stt.config import STTConfig
@@ -38,7 +38,7 @@ class AzureSession(CallbackQueueSession):
     BACKEND_RATE = 16000
     BACKEND_ENCODING = "pcm_s16le"
 
-    def __init__(self, provider: "AzureProvider", config: STTConfig, **opts: Any) -> None:
+    def __init__(self, provider: AzureProvider, config: STTConfig, **opts: Any) -> None:
         super().__init__(config, reconnect=opts.pop("reconnect", None))
         self._provider = provider
         self._opts = opts
@@ -125,8 +125,8 @@ class AzureProvider(STTProvider):
 
     def __init__(
         self,
-        subscription_key: Optional[str] = None,
-        region: Optional[str] = None,
+        subscription_key: str | None = None,
+        region: str | None = None,
         **_: Any,
     ) -> None:
         key = subscription_key or os.environ.get("AZURE_SPEECH_KEY")
@@ -156,7 +156,7 @@ class AzureProvider(STTProvider):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> STTSession:
         session = AzureSession(self, config, reconnect=reconnect, **kwargs)

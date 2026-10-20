@@ -2,8 +2,10 @@
 adapter-owned endpointing (completed -> FINAL) with dedup — all without a server.
 """
 
+import builtins
 import json
 import struct
+import sys
 
 import pytest
 
@@ -21,8 +23,19 @@ def test_whisperlive_registered_in_factory():
     assert "whisper" in _FACTORY
 
 
-def test_provider_not_available_without_websockets():
-    # websockets isn't installed in this environment -> loud, at construction.
+def test_provider_not_available_without_websockets(monkeypatch):
+    # Missing `websockets` must fail loudly at construction, whether or not the
+    # optional extra happens to be installed in this environment.
+    real_import = builtins.__import__
+
+    def _no_websockets(name, *args, **kwargs):
+        if name == "websockets":
+            raise ImportError("No module named 'websockets'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "websockets", raising=False)
+    monkeypatch.setattr(builtins, "__import__", _no_websockets)
+
     with pytest.raises(ProviderNotAvailableError):
         STTClient("whisperlive")
 

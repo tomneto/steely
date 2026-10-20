@@ -206,4 +206,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-build.sh
+# build.sh used to hold the PyPI token inline; it now reads $PYPI_TOKEN from the
+# environment, so it is safe (and useful) to track.
+!build.sh

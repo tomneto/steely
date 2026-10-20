@@ -8,7 +8,8 @@ the factory, and any consumer code without any SDK installed.
 """
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, List, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.stt.base import STTProvider, STTSession
 from steely.stt.config import STTConfig
@@ -16,7 +17,7 @@ from steely.stt.event import EventType, STTEvent
 from steely.stt.reconnect import ReconnectPolicy
 
 
-def _default_script() -> List[STTEvent]:
+def _default_script() -> list[STTEvent]:
     return [
         STTEvent(EventType.INTERIM, "ola", 0, 300, language="pt-BR"),
         STTEvent(EventType.INTERIM, "ola mun", 0, 600, language="pt-BR"),
@@ -27,9 +28,9 @@ def _default_script() -> List[STTEvent]:
 class FakeSession(STTSession):
     """In-memory session: records pushed frames, emits scripted events."""
 
-    def __init__(self, config: STTConfig, script: Optional[List[STTEvent]] = None) -> None:
+    def __init__(self, config: STTConfig, script: list[STTEvent] | None = None) -> None:
         self.config = config
-        self.pushed: List[bytes] = []
+        self.pushed: list[bytes] = []
         self.ended = False
         self.closed = False
         self._script = list(script) if script is not None else _default_script()
@@ -67,7 +68,7 @@ class FakeProvider(STTProvider):
         short pt-BR interim->final sequence.
     """
 
-    def __init__(self, script: Optional[List[STTEvent]] = None, **_: Any) -> None:
+    def __init__(self, script: list[STTEvent] | None = None, **_: Any) -> None:
         self._script = script
 
     @property
@@ -78,7 +79,7 @@ class FakeProvider(STTProvider):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> STTSession:
         return FakeSession(config, self._script)

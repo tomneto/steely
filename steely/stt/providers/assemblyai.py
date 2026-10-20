@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, Optional
+from typing import Any
 
 from steely.stt.base import STTProvider, STTSession, redact
 from steely.stt.config import STTConfig
@@ -38,7 +38,7 @@ class AssemblyAISession(CallbackQueueSession):
     BACKEND_RATE = 16000
     BACKEND_ENCODING = "pcm_s16le"
 
-    def __init__(self, provider: "AssemblyAIProvider", config: STTConfig, **opts: Any) -> None:
+    def __init__(self, provider: AssemblyAIProvider, config: STTConfig, **opts: Any) -> None:
         super().__init__(config, reconnect=opts.pop("reconnect", None))
         self._provider = provider
         self._opts = opts
@@ -119,7 +119,7 @@ class AssemblyAIProvider(STTProvider):
         AssemblyAI API key. Falls back to ``ASSEMBLYAI_API_KEY``.
     """
 
-    def __init__(self, api_key: Optional[str] = None, **_: Any) -> None:
+    def __init__(self, api_key: str | None = None, **_: Any) -> None:
         key = api_key or os.environ.get("ASSEMBLYAI_API_KEY")
         if not key:
             raise STTConfigError("AssemblyAIProvider requires an api_key or ASSEMBLYAI_API_KEY")
@@ -142,7 +142,7 @@ class AssemblyAIProvider(STTProvider):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> STTSession:
         session = AssemblyAISession(self, config, reconnect=reconnect, **kwargs)

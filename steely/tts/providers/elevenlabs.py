@@ -15,7 +15,8 @@ from __future__ import annotations
 import base64
 import json
 import os
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.tts.audio_chunk import AudioChunk
 from steely.tts.base import TTSProvider, redact
@@ -45,7 +46,7 @@ def _output_format(config: TTSConfig) -> str:
 class ElevenLabsSession(QueueSession):
     """Streaming WS session for ElevenLabs. Emits base64-decoded PCM/MP3 chunks."""
 
-    def __init__(self, provider: "ElevenLabsProvider", config: TTSConfig, **kw: Any) -> None:
+    def __init__(self, provider: ElevenLabsProvider, config: TTSConfig, **kw: Any) -> None:
         super().__init__(config, **kw)
         self._provider = provider
         self._index = 0
@@ -118,7 +119,7 @@ class ElevenLabsProvider(TTSProvider):
         ElevenLabs API key. Falls back to ``ELEVENLABS_API_KEY``.
     """
 
-    def __init__(self, api_key: Optional[str] = None, **_: Any) -> None:
+    def __init__(self, api_key: str | None = None, **_: Any) -> None:
         try:
             import websockets
             from websockets import exceptions as ws_exc
@@ -146,7 +147,7 @@ class ElevenLabsProvider(TTSProvider):
         self,
         config: TTSConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> ElevenLabsSession:
         session = ElevenLabsSession(self, config, reconnect=reconnect)

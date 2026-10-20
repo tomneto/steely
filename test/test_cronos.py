@@ -1,7 +1,7 @@
 import asyncio
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
 
 from steely import Dan
 from steely.cronos import cronos

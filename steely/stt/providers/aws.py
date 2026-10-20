@@ -17,7 +17,8 @@ adapter is a straightforward pull-based :class:`QueueSession`.
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from steely.stt.base import STTProvider, STTSession, redact
 from steely.stt.config import STTConfig
@@ -34,7 +35,7 @@ class AmazonTranscribeSession(QueueSession):
     BACKEND_RATE = 16000
     BACKEND_ENCODING = "pcm_s16le"
 
-    def __init__(self, provider: "AmazonTranscribeProvider", config: STTConfig, **opts: Any) -> None:
+    def __init__(self, provider: AmazonTranscribeProvider, config: STTConfig, **opts: Any) -> None:
         super().__init__(config, reconnect=opts.pop("reconnect", None))
         self._provider = provider
         self._opts = opts
@@ -72,7 +73,9 @@ class AmazonTranscribeSession(QueueSession):
                         language=self._config.language,
                     )
         except Exception as exc:  # noqa: BLE001 - normalize to the common error
-            raise STTConnectionError(f"Amazon Transcribe stream error: {exc}", retryable=True) from exc
+            raise STTConnectionError(
+                f"Amazon Transcribe stream error: {exc}", retryable=True
+            ) from exc
 
     async def _send_bytes(self, conn: Any, pcm: bytes) -> None:
         await conn.input_stream.send_audio_event(audio_chunk=pcm)
@@ -96,7 +99,7 @@ class AmazonTranscribeProvider(STTProvider):
         AWS region (e.g. ``"us-east-1"``). Falls back to ``AWS_REGION``.
     """
 
-    def __init__(self, region: Optional[str] = None, **_: Any) -> None:
+    def __init__(self, region: str | None = None, **_: Any) -> None:
         reg = region or os.environ.get("AWS_REGION")
         if not reg:
             raise STTConfigError("AmazonTranscribeProvider requires a region or AWS_REGION")
@@ -119,7 +122,7 @@ class AmazonTranscribeProvider(STTProvider):
         self,
         config: STTConfig,
         *,
-        reconnect: Optional[ReconnectPolicy] = None,
+        reconnect: ReconnectPolicy | None = None,
         **kwargs: Any,
     ) -> STTSession:
         session = AmazonTranscribeSession(self, config, reconnect=reconnect, **kwargs)

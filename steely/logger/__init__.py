@@ -8,7 +8,7 @@ color-coded terminal output, file logging, and automatic function decoration.
 Features
 --------
 - Color-coded log levels (INFO, WARNING, ERROR, etc.)
-- Thread-safe asynchronous logging
+- Thread-safe logging (a per-instance lock serializes writes)
 - File logging with date-based rotation
 - Screen clearing capability
 - Decorator for automatic function logging
@@ -62,6 +62,7 @@ Logging to file:
 import asyncio
 import inspect
 import os
+import threading
 from datetime import datetime
 from functools import wraps
 from typing import Literal
@@ -131,6 +132,12 @@ _LEVEL_NUMERIC = {
 }
 
 # Color mapping for log levels (optimization)
+_TIMESTAMP_FORMAT = '%d-%m-%Y %H:%M:%S'
+"""Single strftime format; ``timestamp[:10]`` is the DD-MM-YYYY date part."""
+
+_ANSI_CLEAR = '\x1b[2J\x1b[H'
+"""Erase the whole screen and home the cursor, without spawning a subprocess."""
+
 _COLOR_MAP = {
     'INFO': UnicodeColors.success_cyan,
     'START': UnicodeColors.success_cyan,
@@ -231,8 +238,10 @@ class Logger:
 
     Notes
     -----
-    - All logging operations are performed in separate threads for
-      non-blocking behavior.
+    - Logging is synchronous: log() formats, writes and prints inline on the
+      calling thread. It is thread-*safe* (a per-instance lock keeps concurrent
+      lines whole), not asynchronous. If you need off-thread shipping, use
+      GrafanaSink, which does batch and send in a background thread.
     - Log files are named using the format DD-MM-YYYY.log and are
       appended to throughout the day.
     - Screen clearing works on both Windows (cls) and Unix (clear).
@@ -251,7 +260,16 @@ class Logger:
     _stdlib_root_intercepted: bool = False
     _intercepted_stdlib_loggers: set = set()
 
-    def __init__(self, owner: str, app_name: str = None, destination: str = None, debug: bool = True, clean: bool = False, callback: callable = None, **kwargs):
+    def __init__(
+        self,
+        owner: str,
+        app_name: str = None,
+        destination: str = None,
+        debug: bool = True,
+        clean: bool = False,
+        callback: callable = None,
+        **kwargs,
+    ):
 
         self.kwargs = kwargs
 
@@ -277,6 +295,11 @@ class Logger:
 
         self.callback = callback
         self._level = None  # None = inherit from hierarchy or global
+
+        # Serializes the side-effecting tail of log(): file write, console
+        # print and callbacks. Without it "thread-safe" was only aspirational —
+        # concurrent loggers interleaved partial lines on stdout and in the file.
+        self._lock = threading.Lock()
 
         # Performance optimizations: cache log path and file handle
         self._cached_log_path = None
@@ -330,7 +353,7 @@ class Logger:
         if self._log_file_handle is not None:
             try:
                 self._log_file_handle.close()
-            except:
+            except Exception:
                 pass
             self._log_file_handle = None
 
@@ -341,16 +364,28 @@ class Logger:
         if self._log_file_handle is not None:
             try:
                 self._log_file_handle.close()
-            except:
+            except Exception:
                 pass
 
-    def log(self, level: Level, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, self_debug: bool = True, **kwargs):
+    def log(
+        self,
+        level: Level,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        self_debug: bool = True,
+        **kwargs,
+    ):
         """
         Internal method that performs the actual logging operation.
 
-        This static method is called in a separate thread by the log() method
-        to ensure non-blocking logging. It handles formatting, coloring,
-        file writing, and terminal output.
+        Runs synchronously on the calling thread: it handles formatting,
+        coloring, file writing and terminal output, then returns. A per-instance
+        lock guards the file/stdout/callback section so concurrent threads never
+        interleave a partial line.
 
         Parameters
         ----------
@@ -397,13 +432,15 @@ class Logger:
         now = datetime.now()
 
         if self.clean:
-            os.system('cls' if os.name == 'nt' else 'clear')
+            # ANSI erase-screen + cursor-home. The old os.system('clear')
+            # spawned a subprocess for every single message.
+            print(_ANSI_CLEAR, end='')
             if not self.master_clean:
                 self.clean = False
 
-        # Pre-format date strings (only call strftime once each)
-        current_date = now.strftime('%d-%m-%Y')
-        timestamp = f"{current_date} {now.strftime('%H:%M:%S')}"
+        # One strftime call; the date half is sliced back out of it.
+        timestamp = now.strftime(_TIMESTAMP_FORMAT)
+        current_date = timestamp[:10]
         level = level.upper()
         owner = self.owner_upper  # Use cached uppercase owner (optimization)
 
@@ -443,53 +480,58 @@ class Logger:
         message_enclose = " - ".join(message_parts[:2]) + " " + " ".join(message_parts[2:])
         content = f"\n{message_enclose}: {str(message)}"
 
-        # Write to file with cached path and reusable file handle
-        if self.path is not None:
-            log_path = self._get_log_path(current_date)
-
-            # Keep file handle open for reuse
-            if self._log_file_handle is None or self._log_file_handle.closed:
-                try:
-                    self._log_file_handle = open(log_path, 'a+')
-                except Exception:
-                    pass
-
-            if self._log_file_handle is not None:
-                try:
-                    self._log_file_handle.write(str(content))
-                    self._log_file_handle.flush()  # Ensure data is written
-                except Exception:
-                    pass
-
         # Use dictionary lookup for color (optimization #2)
         correspondent_clr = _COLOR_MAP.get(level, UnicodeColors.reset)
 
-        if not supress or debug or self_debug:
-            print(correspondent_clr, content[1:], UnicodeColors.reset)
-            if clean:
-                self.clean = True
+        # Everything below has side effects (file handle, stdout, sinks) and is
+        # serialized so concurrent threads emit whole lines, not interleaved ones.
+        with self._lock:
+            # Write to file with cached path and reusable file handle
+            if self.path is not None:
+                log_path = self._get_log_path(current_date)
 
-        if self.callback is not None:
-            self.callback(
-                level=level,
-                message=message,
-                app_name=_current_app,
-                owner=owner,
-                timestamp=timestamp,
-                content=content,
-                **{**self.kwargs, **kwargs},
-            )
+                # Keep file handle open for reuse
+                if self._log_file_handle is None or self._log_file_handle.closed:
+                    try:
+                        # Deliberately long-lived: the handle is reused across
+                        # log() calls and closed in _get_log_path/__del__.
+                        self._log_file_handle = open(log_path, 'a+')  # noqa: SIM115
+                    except Exception:
+                        pass
 
-        if self._global_grafana is not None:
-            self._global_grafana(
-                level=level,
-                message=message,
-                app_name=_current_app,
-                owner=owner,
-                timestamp=timestamp,
-                content=content,
-                **{**self.kwargs, **kwargs},
-            )
+                if self._log_file_handle is not None:
+                    try:
+                        self._log_file_handle.write(str(content))
+                        self._log_file_handle.flush()  # Ensure data is written
+                    except Exception:
+                        pass
+
+            if not supress or debug or self_debug:
+                print(correspondent_clr, content[1:], UnicodeColors.reset)
+                if clean:
+                    self.clean = True
+
+            if self.callback is not None:
+                self.callback(
+                    level=level,
+                    message=message,
+                    app_name=_current_app,
+                    owner=owner,
+                    timestamp=timestamp,
+                    content=content,
+                    **{**self.kwargs, **kwargs},
+                )
+
+            if self._global_grafana is not None:
+                self._global_grafana(
+                    level=level,
+                    message=message,
+                    app_name=_current_app,
+                    owner=owner,
+                    timestamp=timestamp,
+                    content=content,
+                    **{**self.kwargs, **kwargs},
+                )
 
         return content
 
@@ -497,64 +539,316 @@ class Logger:
         """Allow the logger instance to be called directly like a function."""
         self.log(*args, **kwargs)
 
-    def info(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def info(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log an informational message (cyan color)."""
-        return self.log("INFO", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "INFO",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def debug(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def debug(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log an informational message (cyan color)."""
         if os.getenv("DEBUG", False):
-            self.log("INFO", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+            self.log(
+                "INFO",
+                message,
+                *args,
+                app_name=app_name,
+                clean=clean,
+                supress=supress,
+                debug=debug,
+                **kwargs,
+            )
             return True
         return False
 
-    def start(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def start(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a start/initialization message (cyan color)."""
-        return self.log("START", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "START",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def warning(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def warning(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a warning message (yellow color)."""
-        return self.log("WARNING", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "WARNING",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def alert(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def alert(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log an alert message (yellow color)."""
-        return self.log("ALERT", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "ALERT",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def success(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def success(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a success message (green color)."""
-        return self.log("SUCCESS", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "SUCCESS",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def ok(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def ok(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log an OK/confirmation message (green color)."""
-        return self.log("OK", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "OK",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def critical(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def critical(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a critical error message (red color)."""
-        return self.log("CRITICAL", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "CRITICAL",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def error(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def error(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log an error message (red color)."""
-        return self.log("ERROR", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "ERROR",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def fault(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def fault(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a fault message (red color)."""
-        return self.log("FAULT", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "FAULT",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def fail(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def fail(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a failure message (red color)."""
-        return self.log("FAIL", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "FAIL",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def fatal(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def fatal(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a fatal error message (red color)."""
-        return self.log("FATAL", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "FATAL",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def test_result(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def test_result(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a test result message (blue color)."""
-        return self.log("TEST-RESULT", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "TEST-RESULT",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
-    def test(self, message, *args, app_name: str = None, clean: bool = False, supress: bool = False, debug: bool = True, **kwargs) -> bool:
+    def test(
+        self,
+        message,
+        *args,
+        app_name: str = None,
+        clean: bool = False,
+        supress: bool = False,
+        debug: bool = True,
+        **kwargs,
+    ) -> bool:
         """Log a test message (blue color)."""
-        return self.log("TEST", message, *args, app_name=app_name, clean=clean, supress=supress, debug=debug, **kwargs)
+        return self.log(
+            "TEST",
+            message,
+            *args,
+            app_name=app_name,
+            clean=clean,
+            supress=supress,
+            debug=debug,
+            **kwargs,
+        )
 
     def set_app_name(self, app_name: str):
         """
@@ -714,7 +1008,8 @@ class Logger:
         >>> Logger.set_global_destination("/var/log/myapp")
         >>> logger1 = Logger("module1")  # Will log to /var/log/myapp
         >>> logger2 = Logger("module2")  # Will also log to /var/log/myapp
-        >>> logger3 = Logger("module3", destination="/tmp/logs")  # Explicit destination overrides global
+        >>> # An explicit destination overrides the global one:
+        >>> logger3 = Logger("module3", destination="/tmp/logs")
         """
         cls._global_destination = destination
 
@@ -845,6 +1140,10 @@ class Logger:
         -----
         - Idempotent — calling this method multiple times does **not**
           duplicate handlers or log lines.
+        - **Thread-safe.** The installation is atomic: concurrent calls from
+          several threads cannot build two handlers, attach a handler twice, or
+          corrupt the ``logging.config.dictConfig`` monkeypatch that keeps
+          frameworks like uvicorn from erasing the interception.
         - Named loggers have ``propagate=False`` to prevent double
           emission through parent / root loggers.
         - Existing handlers on the targeted loggers are removed.
@@ -887,7 +1186,8 @@ def log(func):
     --------
     - **On call**: Logs "[START]: Function Execution Started..."
     - **On success**: Logs "[SUCCESS]: Function Finished"
-    - **On exception**: Logs "[ERROR]: Function Failed: <error message>"
+    - **On exception**: Logs "[ERROR]: Function Failed: <error message>" and
+      re-raises. The decorator observes failures, it never absorbs them.
 
     The log messages include:
     - Timestamp (DD-MM-YYYY HH:MM:SS)
@@ -923,6 +1223,9 @@ def log(func):
     >>> risky_operation()
     # Logs: [START]: Function Execution Started...
     # Logs: [ERROR]: Function Failed: Something went wrong
+    Traceback (most recent call last):
+      ...
+    ValueError: Something went wrong
 
     Using global app name:
 
@@ -936,8 +1239,10 @@ def log(func):
     -----
     - The original function signature is preserved for compatibility
       with frameworks like FastAPI that use introspection.
-    - Exceptions are logged but not re-raised; the function returns None
-      on error.
+    - Exceptions are logged and then re-raised unchanged (bare ``raise``, so the
+      original traceback survives). Sync and async wrappers behave identically.
+      Before 1.0.4.x the sync wrapper swallowed the exception and returned None,
+      which silently turned failures into successful-looking ``None`` results.
     - The module name is extracted using inspect.getmodule() unless a
       global app_name is set via Logger.set_global_app_name().
     """
@@ -950,16 +1255,21 @@ def log(func):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             # Use global app_name if set, otherwise use module name
-            current_app_name = Logger._global_app_name if Logger._global_app_name is not None else module_name
-            __log__.start(f'Function Execution Started...', app_name=current_app_name)
+            current_app_name = (
+                Logger._global_app_name
+                if Logger._global_app_name is not None
+                else module_name
+            )
+            __log__.start('Function Execution Started...', app_name=current_app_name)
             try:
                 res = await func(*args, **kwargs)
-                __log__.success(f'Function Finished', app_name=current_app_name)
+                __log__.success('Function Finished', app_name=current_app_name)
 
                 return res
             except Exception as e:
                 __log__.error(f'Function Failed: {str(e)}', app_name=current_app_name)
-                raise e
+                # Bare re-raise: logging must observe the failure, never absorb it.
+                raise
 
         async_wrapper.__signature__ = inspect.signature(func)
         return async_wrapper
@@ -968,15 +1278,21 @@ def log(func):
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             # Use global app_name if set, otherwise use module name
-            current_app_name = Logger._global_app_name if Logger._global_app_name is not None else module_name
-            __log__.start(f'Function Execution Started...', app_name=current_app_name)
+            current_app_name = (
+                Logger._global_app_name
+                if Logger._global_app_name is not None
+                else module_name
+            )
+            __log__.start('Function Execution Started...', app_name=current_app_name)
             try:
                 res = func(*args, **kwargs)
-                __log__.success(f'Function Finished', app_name=current_app_name)
+                __log__.success('Function Finished', app_name=current_app_name)
 
                 return res
             except Exception as e:
                 __log__.error(f'Function Failed: {str(e)}', app_name=current_app_name)
+                # Bare re-raise: logging must observe the failure, never absorb it.
+                raise
 
         sync_wrapper.__signature__ = inspect.signature(func)
         return sync_wrapper
