@@ -46,7 +46,7 @@ from steely.pprint import pprint
 from steely.scan import scan
 from steely.stt import EventType, STTClient, STTConfig, STTEvent
 
-__version__ = "1.0.3.5"
+__version__ = "1.0.3.6"
 __author__ = "Steely Contributors"
 __all__ = [
     "Dan",
